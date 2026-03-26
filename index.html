@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Bingo Realtime - 5 Lines to Win</title>
+    <title>Bingo Realtime - With Strike Lines</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; background-color: #f4f7f6; padding-top: 20px; }
         .controls { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; display: flex; gap: 10px; }
@@ -10,39 +10,51 @@
         button { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.2s; }
         .btn-join { background-color: #007bff; color: white; }
         .btn-newgame { background-color: #28a745; color: white; margin-top: 15px; display: none; }
-        .status { color: #28a745; font-weight: bold; margin-bottom: 10px; height: 25px; font-size: 1.2rem; }
-        .grid { display: grid; grid-template-columns: repeat(5,<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Bingo Realtime - 5 Lines to Win</title>
-    <style>
-        body { font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; background-color: #f4f7f6; padding-top: 20px; }
-        .controls { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; display: flex; gap: 10px; }
-        input { padding: 10px; border: 1px solid #ddd; border-radius: 5px; width: 150px; }
-        button { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.2s; }
-        .btn-join { background-color: #007bff; color: white; }
-        .btn-newgame { background-color: #28a745; color: white; margin-top: 15px; display: none; }
-        .status { color: #28a745; font-weight: bold; margin-bottom: 10px; height: 25px; font-size: 1.2rem; }
-        .grid { display: grid; grid-template-columns: repeat(5, 70px); gap: 10px; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .status { color: #666; font-weight: bold; margin-bottom: 10px; height: 25px; font-size: 1.1rem; }
+        
+        /* Grid and Cells */
+        .grid { display: grid; grid-template-columns: repeat(5, 70px); gap: 10px; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); position: relative; }
         .cell { width: 70px; height: 70px; border: 2px solid #eee; display: flex; align-items: center; justify-content: center; 
-                cursor: pointer; font-size: 1.2rem; font-weight: bold; border-radius: 8px; background: #fff; }
-        .marked { background-color: #ffc107 !important; border-color: #ff9800 !important; color: #fff; transform: scale(0.95); }
-        .bingo-overlay { color: #d63384; font-size: 2rem; animation: pulse 1s infinite; display: none; font-weight: 900; margin-bottom: 10px; }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
+                cursor: pointer; font-size: 1.2rem; font-weight: bold; border-radius: 8px; background: #fff; position: relative; overflow: hidden; }
+        .marked { background-color: #f8f9fa; border-color: #ffc107; color: #ff9800; }
+        
+        /* Winning Effect */
+        .winning-cell { background-color: #28a745 !important; border-color: #1e7e34 !important; color: white !important; z-index: 1; }
+        
+        /* The Strike Line Effect */
+        .winning-cell::after {
+            content: '';
+            position: absolute;
+            background-color: rgba(255, 255, 255, 0.7);
+            z-index: 2;
+        }
+        /* Horizontal line */
+        .line-h::after { width: 100%; height: 4px; top: 50%; left: 0; transform: translateY(-50%); }
+        /* Vertical line */
+        .line-v::after { width: 4px; height: 100%; top: 0; left: 50%; transform: translateX(-50%); }
+        /* Diagonal 1 (\) */
+        .line-d1::after { width: 140%; height: 4px; top: 50%; left: -20%; transform: rotate(45deg); }
+        /* Diagonal 2 (/) */
+        .line-d2::after { width: 140%; height: 4px; top: 50%; left: -20%; transform: rotate(-45deg); }
+
+        #winMsg { color: #28a745; font-size: 2.5rem; display: none; font-weight: 900; animation: bounce 0.5s infinite alternate; }
+        #loseMsg { color: #dc3545; font-size: 2.5rem; display: none; font-weight: 900; }
+        @keyframes bounce { from { transform: translateY(0); } to { transform: translateY(-10px); } }
     </style>
 </head>
 <body>
 
     <div class="controls">
-        <input type="text" id="roomId" placeholder="Room ID">
-        <button class="btn-join" onclick="joinRoom()">Join / Create</button>
+        <input type="text" id="roomId" placeholder="Room Name">
+        <button class="btn-join" onclick="joinRoom()">Join Room</button>
     </div>
 
-    <div id="bingoMsg" class="bingo-overlay">★ BINGO! ★</div>
-    <div id="status" class="status"></div>
+    <div id="winMsg">★ BINGO! YOU WIN ★</div>
+    <div id="loseMsg">GAME OVER - YOU LOSE</div>
+    <div id="status" class="status">Waiting...</div>
+    
     <div id="bingoBoard" class="grid"></div>
-    <button id="newGameBtn" class="btn-newgame" onclick="newGame()">Start New Game</button>
+    <button id="newGameBtn" class="btn-newgame" onclick="newGame()">Start New Match</button>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
@@ -60,20 +72,20 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
+        
+        const myId = "player_" + Math.floor(Math.random() * 1000000);
         let currentRoom = "";
-        let boardLayout = []; // To store numbers position
+        let isGameOver = false;
 
-        function shuffle(array) {
-            return array.sort(() => Math.random() - 0.5);
-        }
+        function shuffle(array) { return array.sort(() => Math.random() - 0.5); }
 
         function createBoard() {
             const board = document.getElementById('bingoBoard');
             board.innerHTML = '';
             const numbers = Array.from({length: 25}, (_, i) => i + 1);
-            boardLayout = shuffle(numbers);
+            const shuffled = shuffle(numbers);
 
-            boardLayout.forEach((num, index) => {
+            shuffled.forEach((num, index) => {
                 let div = document.createElement('div');
                 div.className = 'cell';
                 div.innerText = num;
@@ -82,18 +94,21 @@
                 div.onclick = () => markNumber(num);
                 board.appendChild(div);
             });
-            document.getElementById('newGameBtn').style.display = 'block';
-            document.getElementById('bingoMsg').style.display = 'none';
+            
+            document.getElementById('winMsg').style.display = 'none';
+            document.getElementById('loseMsg').style.display = 'none';
+            document.getElementById('newGameBtn').style.display = 'none';
+            isGameOver = false;
         }
 
         window.joinRoom = function() {
             const id = document.getElementById('roomId').value;
-            if (!id) return alert("Please enter a Room ID");
+            if (!id) return alert("Enter a Room Name");
             currentRoom = id;
-            document.getElementById('status').innerText = "Room: " + id;
+            document.getElementById('status').innerText = "In Room: " + id;
             createBoard();
 
-            onValue(ref(db, 'rooms/' + currentRoom + '/marked'), (snapshot) => {
+            onValue(ref(db, `rooms/${currentRoom}/marked`), (snapshot) => {
                 const markedNumbers = snapshot.val() || {};
                 document.querySelectorAll('.cell').forEach(el => {
                     const num = el.getAttribute('data-num');
@@ -102,161 +117,56 @@
                 });
                 checkBingo();
             });
+
+            onValue(ref(db, `rooms/${currentRoom}/winner`), (snapshot) => {
+                const winnerId = snapshot.val();
+                if (winnerId) {
+                    isGameOver = true;
+                    document.getElementById('newGameBtn').style.display = 'block';
+                    if (winnerId === myId) document.getElementById('winMsg').style.display = 'block';
+                    else document.getElementById('loseMsg').style.display = 'block';
+                }
+            });
         };
 
         window.markNumber = function(num) {
-            if (!currentRoom) return alert("Join a room first!");
+            if (!currentRoom || isGameOver) return;
             update(ref(db, `rooms/${currentRoom}/marked`), { [num]: true });
         };
 
         function checkBingo() {
             const cells = document.querySelectorAll('.cell');
+            cells.forEach(c => c.classList.remove('winning-cell', 'line-h', 'line-v', 'line-d1', 'line-d2'));
+            
             let lines = 0;
-
-            // Winning combinations (indices 0-24)
             const winningLines = [
-                [0,1,2,3,4], [5,6,7,8,9], [10,11,12,13,14], [15,16,17,18,19], [20,21,22,23,24], // Rows
-                [0,5,10,15,20], [1,6,11,16,21], [2,7,12,17,22], [3,8,13,18,23], [4,9,14,19,24], // Cols
-                [0,6,12,18,24], [4,8,12,16,20] // Diagonals
+                {indices: [0,1,2,3,4], type: 'line-h'}, {indices: [5,6,7,8,9], type: 'line-h'}, 
+                {indices: [10,11,12,13,14], type: 'line-h'}, {indices: [15,16,17,18,19], type: 'line-h'}, 
+                {indices: [20,21,22,23,24], type: 'line-h'},
+                {indices: [0,5,10,15,20], type: 'line-v'}, {indices: [1,6,11,16,21], type: 'line-v'}, 
+                {indices: [2,7,12,17,22], type: 'line-v'}, {indices: [3,8,13,18,23], type: 'line-v'}, 
+                {indices: [4,9,14,19,24], type: 'line-v'},
+                {indices: [0,6,12,18,24], type: 'line-d1'}, {indices: [4,8,12,16,20], type: 'line-d2'}
             ];
 
             winningLines.forEach(line => {
-                if (line.every(idx => cells[idx].classList.contains('marked'))) {
+                if (line.indices.every(idx => cells[idx].classList.contains('marked'))) {
                     lines++;
+                    line.indices.forEach(idx => {
+                        cells[idx].classList.add('winning-cell', line.type);
+                    });
                 }
             });
 
-            if (lines >= 5) {
-                document.getElementById('bingoMsg').style.display = 'block';
-                document.getElementById('status').innerText = "YOU WIN WITH " + lines + " LINES!";
+            if (lines >= 5 && !isGameOver) {
+                set(ref(db, `rooms/${currentRoom}/winner`), myId);
             } else {
                 document.getElementById('status').innerText = "Lines: " + lines + " / 5";
             }
         }
 
         window.newGame = function() {
-            if (confirm("Reset game for everyone in this room?")) {
-                set(ref(db, 'rooms/' + currentRoom + '/marked'), null);
-                createBoard();
-            }
-        };
-    </script>
-</body>
-</html> 70px); gap: 10px; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        .cell { width: 70px; height: 70px; border: 2px solid #eee; display: flex; align-items: center; justify-content: center; 
-                cursor: pointer; font-size: 1.2rem; font-weight: bold; border-radius: 8px; background: #fff; }
-        .marked { background-color: #ffc107 !important; border-color: #ff9800 !important; color: #fff; transform: scale(0.95); }
-        .bingo-overlay { color: #d63384; font-size: 2rem; animation: pulse 1s infinite; display: none; font-weight: 900; margin-bottom: 10px; }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
-    </style>
-</head>
-<body>
-
-    <div class="controls">
-        <input type="text" id="roomId" placeholder="Room ID">
-        <button class="btn-join" onclick="joinRoom()">Join / Create</button>
-    </div>
-
-    <div id="bingoMsg" class="bingo-overlay">★ BINGO! ★</div>
-    <div id="status" class="status"></div>
-    <div id="bingoBoard" class="grid"></div>
-    <button id="newGameBtn" class="btn-newgame" onclick="newGame()">Start New Game</button>
-
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getDatabase, ref, set, onValue, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyDfpiAPFdf-TGrzZksRDXecy7szOoU_5ts",
-            authDomain: "bingo-964ba.firebaseapp.com",
-            databaseURL: "https://bingo-964ba-default-rtdb.asia-southeast1.firebasedatabase.app",
-            projectId: "bingo-964ba",
-            storageBucket: "bingo-964ba.firebasestorage.app",
-            messagingSenderId: "870098576889",
-            appId: "1:870098576889:web:7d1e32ca3d091a2aa44928"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        const db = getDatabase(app);
-        let currentRoom = "";
-        let boardLayout = []; // To store numbers position
-
-        function shuffle(array) {
-            return array.sort(() => Math.random() - 0.5);
-        }
-
-        function createBoard() {
-            const board = document.getElementById('bingoBoard');
-            board.innerHTML = '';
-            const numbers = Array.from({length: 25}, (_, i) => i + 1);
-            boardLayout = shuffle(numbers);
-
-            boardLayout.forEach((num, index) => {
-                let div = document.createElement('div');
-                div.className = 'cell';
-                div.innerText = num;
-                div.id = `pos-${index}`;
-                div.setAttribute('data-num', num);
-                div.onclick = () => markNumber(num);
-                board.appendChild(div);
-            });
-            document.getElementById('newGameBtn').style.display = 'block';
-            document.getElementById('bingoMsg').style.display = 'none';
-        }
-
-        window.joinRoom = function() {
-            const id = document.getElementById('roomId').value;
-            if (!id) return alert("Please enter a Room ID");
-            currentRoom = id;
-            document.getElementById('status').innerText = "Room: " + id;
-            createBoard();
-
-            onValue(ref(db, 'rooms/' + currentRoom + '/marked'), (snapshot) => {
-                const markedNumbers = snapshot.val() || {};
-                document.querySelectorAll('.cell').forEach(el => {
-                    const num = el.getAttribute('data-num');
-                    if (markedNumbers[num]) el.classList.add('marked');
-                    else el.classList.remove('marked');
-                });
-                checkBingo();
-            });
-        };
-
-        window.markNumber = function(num) {
-            if (!currentRoom) return alert("Join a room first!");
-            update(ref(db, `rooms/${currentRoom}/marked`), { [num]: true });
-        };
-
-        function checkBingo() {
-            const cells = document.querySelectorAll('.cell');
-            let lines = 0;
-
-            // Winning combinations (indices 0-24)
-            const winningLines = [
-                [0,1,2,3,4], [5,6,7,8,9], [10,11,12,13,14], [15,16,17,18,19], [20,21,22,23,24], // Rows
-                [0,5,10,15,20], [1,6,11,16,21], [2,7,12,17,22], [3,8,13,18,23], [4,9,14,19,24], // Cols
-                [0,6,12,18,24], [4,8,12,16,20] // Diagonals
-            ];
-
-            winningLines.forEach(line => {
-                if (line.every(idx => cells[idx].classList.contains('marked'))) {
-                    lines++;
-                }
-            });
-
-            if (lines >= 5) {
-                document.getElementById('bingoMsg').style.display = 'block';
-                document.getElementById('status').innerText = "YOU WIN WITH " + lines + " LINES!";
-            } else {
-                document.getElementById('status').innerText = "Lines: " + lines + " / 5";
-            }
-        }
-
-        window.newGame = function() {
-            if (confirm("Reset game for everyone in this room?")) {
-                set(ref(db, 'rooms/' + currentRoom + '/marked'), null);
-                createBoard();
-            }
+            set(ref(db, `rooms/${currentRoom}`), null);
         };
     </script>
 </body>
