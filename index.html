@@ -2,11 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Bingo Realtime - 2 Players Match</title>
+    <title>Bingo</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; background-color: #f4f7f6; padding-top: 20px; }
-        
-        /* Room controls */
+
         #roomControls { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; display: flex; gap: 10px; }
         input { padding: 10px; border: 1px solid #ddd; border-radius: 5px; width: 150px; }
         
@@ -18,7 +17,6 @@
         
         .status { color: #666; font-weight: bold; margin-bottom: 10px; height: 25px; font-size: 1.1rem; text-align: center; }
         
-        /* Game elements */
         #gameArea { display: none; flex-direction: column; align-items: center; }
         .action-buttons { display: none; gap: 10px; margin-top: 20px; }
         
@@ -112,12 +110,11 @@
             document.getElementById('joinBtn').disabled = true;
             document.getElementById('status').innerText = "Waiting for an opponent...";
 
-            // Status Listener
             onValue(ref(db, `rooms/${currentRoom}/players`), (snapshot) => {
                 const players = snapshot.val() || {};
                 const playerCount = Object.keys(players).length;
                 if (playerCount >= 2) {
-                    document.getElementById('roomControls').style.display = 'none'; // Hide join controls
+                    document.getElementById('roomControls').style.display = 'none'; 
                     document.getElementById('gameArea').style.display = 'flex';
                     document.getElementById('status').innerText = "Match Started!"; 
                     if (!document.getElementById('bingoBoard').innerHTML) {
@@ -125,12 +122,11 @@
                     }
                 } else {
                     document.getElementById('gameArea').style.display = 'none';
-                    document.getElementById('roomControls').style.display = 'flex'; // Re-show if needed or refresh
-                    document.getElementById('status').innerText = "Waiting for an opponent...";
+                    document.getElementById('roomControls').style.display = 'flex'; 
+                    document.getElementById('status').innerText = "Waiting for another player...";
                 }
             });
 
-            // Mark Listener
             onValue(ref(db, `rooms/${currentRoom}/marked`), (snapshot) => {
                 const markedNumbers = snapshot.val() || {};
                 const markedCount = Object.keys(markedNumbers).length;
@@ -152,7 +148,6 @@
                 if (markedCount === 0) resetUI();
             });
 
-            // Winner Listener
             onValue(ref(db, `rooms/${currentRoom}/winner`), (snapshot) => {
                 const winnerId = snapshot.val();
                 if (winnerId) {
@@ -168,11 +163,14 @@
         };
 
         function resetUI() {
-            document.getElementById('winMsg').style.display = 'none';
-            document.getElementById('loseMsg').style.display = 'none';
-            document.getElementById('afterGameActions').style.display = 'none';
-            isGameOver = false;
-        }
+    document.getElementById('winMsg').style.display = 'none';
+    document.getElementById('loseMsg').style.display = 'none';
+    document.getElementById('afterGameActions').style.display = 'none';
+    
+    document.getElementById('status').innerText = "In Match | Lines: 0 / 5";
+    
+    isGameOver = false;
+}
 
         window.markNumber = function(num) {
             if (!currentRoom || isGameOver) return;
@@ -210,17 +208,24 @@
         }
 
         window.newGame = function() {
-            const roomRef = ref(db, `rooms/${currentRoom}`);
-            update(roomRef, { marked: {}, winner: null });
-            createBoard();
-        };
+    const roomRef = ref(db, `rooms/${currentRoom}`);
+    
+    isGameOver = false;
+    
+    update(roomRef, { 
+        marked: {}, 
+        winner: null 
+    }).then(() => {
+        createBoard();
+        resetUI(); 
+    });
+};
 
-        // NEW: Leave room function
         window.leaveRoom = function() {
             if (currentRoom) {
                 const playerRef = ref(db, `rooms/${currentRoom}/players/${myId}`);
                 remove(playerRef).then(() => {
-                    location.reload(); // Refresh to reset everything
+                    location.reload(); 
                 });
             }
         };
