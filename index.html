@@ -2,18 +2,26 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Bingo</title>
+    <title>Bingo Realtime - 2 Players Match</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; background-color: #f4f7f6; padding-top: 20px; }
-        .controls { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; display: flex; gap: 10px; }
+        
+        /* Room controls */
+        #roomControls { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; display: flex; gap: 10px; }
         input { padding: 10px; border: 1px solid #ddd; border-radius: 5px; width: 150px; }
+        
         button { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.2s; }
         .btn-join { background-color: #007bff; color: white; }
-        .btn-newgame { background-color: #28a745; color: white; margin-top: 15px; display: none; }
-        .btn-shuffle { background-color: #6c757d; color: white; margin-bottom: 10px; display: none; }
+        .btn-newgame { background-color: #28a745; color: white; }
+        .btn-leave { background-color: #6c757d; color: white; }
+        .btn-shuffle { background-color: #ff8c00; color: white; margin-bottom: 10px; display: none; }
+        
         .status { color: #666; font-weight: bold; margin-bottom: 10px; height: 25px; font-size: 1.1rem; text-align: center; }
         
+        /* Game elements */
         #gameArea { display: none; flex-direction: column; align-items: center; }
+        .action-buttons { display: none; gap: 10px; margin-top: 20px; }
+        
         .grid { display: grid; grid-template-columns: repeat(5, 70px); gap: 10px; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); position: relative; }
         .cell { width: 70px; height: 70px; border: 2px solid #eee; display: flex; align-items: center; justify-content: center; 
                 cursor: pointer; font-size: 1.2rem; font-weight: bold; border-radius: 8px; background: #fff; position: relative; overflow: hidden; }
@@ -33,24 +41,28 @@
 </head>
 <body>
 
-    <div class="controls">
+    <div id="roomControls">
         <input type="text" id="roomId" placeholder="Room Name">
         <button class="btn-join" id="joinBtn" onclick="joinRoom()">Join Room</button>
     </div>
 
-    <div id="status" class="status">Please enter a room name to start</div>
+    <div id="status" class="status">Enter room name to start</div>
     
     <div id="gameArea">
         <div id="winMsg">★ BINGO! YOU WIN ★</div>
         <div id="loseMsg">GAME OVER - YOU LOSE</div>
         <button id="shuffleBtn" class="btn-shuffle" onclick="createBoard()">Shuffle Board</button>
         <div id="bingoBoard" class="grid"></div>
-        <button id="newGameBtn" class="btn-newgame" onclick="newGame()">Start New Match</button>
+        
+        <div id="afterGameActions" class="action-buttons">
+            <button class="btn-newgame" onclick="newGame()">Start New Match</button>
+            <button class="btn-leave" onclick="leaveRoom()">Leave Room</button>
+        </div>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getDatabase, ref, set, onValue, update, onDisconnect } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        import { getDatabase, ref, set, onValue, update, onDisconnect, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDfpiAPFdf-TGrzZksRDXecy7szOoU_5ts",
@@ -100,11 +112,12 @@
             document.getElementById('joinBtn').disabled = true;
             document.getElementById('status').innerText = "Waiting for an opponent...";
 
-            // Fix: Status update when 2 players join
+            // Status Listener
             onValue(ref(db, `rooms/${currentRoom}/players`), (snapshot) => {
                 const players = snapshot.val() || {};
                 const playerCount = Object.keys(players).length;
                 if (playerCount >= 2) {
+                    document.getElementById('roomControls').style.display = 'none'; // Hide join controls
                     document.getElementById('gameArea').style.display = 'flex';
                     document.getElementById('status').innerText = "Match Started!"; 
                     if (!document.getElementById('bingoBoard').innerHTML) {
@@ -112,15 +125,16 @@
                     }
                 } else {
                     document.getElementById('gameArea').style.display = 'none';
+                    document.getElementById('roomControls').style.display = 'flex'; // Re-show if needed or refresh
                     document.getElementById('status').innerText = "Waiting for an opponent...";
                 }
             });
 
+            // Mark Listener
             onValue(ref(db, `rooms/${currentRoom}/marked`), (snapshot) => {
                 const markedNumbers = snapshot.val() || {};
                 const markedCount = Object.keys(markedNumbers).length;
 
-                // Feature: Only show shuffle if no numbers are picked yet
                 const shuffleBtn = document.getElementById('shuffleBtn');
                 if (markedCount === 0 && !isGameOver) {
                     shuffleBtn.style.display = 'block';
@@ -138,11 +152,12 @@
                 if (markedCount === 0) resetUI();
             });
 
+            // Winner Listener
             onValue(ref(db, `rooms/${currentRoom}/winner`), (snapshot) => {
                 const winnerId = snapshot.val();
                 if (winnerId) {
                     isGameOver = true;
-                    document.getElementById('newGameBtn').style.display = 'block';
+                    document.getElementById('afterGameActions').style.display = 'flex';
                     document.getElementById('shuffleBtn').style.display = 'none';
                     if (winnerId === myId) document.getElementById('winMsg').style.display = 'block';
                     else document.getElementById('loseMsg').style.display = 'block';
@@ -155,7 +170,7 @@
         function resetUI() {
             document.getElementById('winMsg').style.display = 'none';
             document.getElementById('loseMsg').style.display = 'none';
-            document.getElementById('newGameBtn').style.display = 'none';
+            document.getElementById('afterGameActions').style.display = 'none';
             isGameOver = false;
         }
 
@@ -198,6 +213,16 @@
             const roomRef = ref(db, `rooms/${currentRoom}`);
             update(roomRef, { marked: {}, winner: null });
             createBoard();
+        };
+
+        // NEW: Leave room function
+        window.leaveRoom = function() {
+            if (currentRoom) {
+                const playerRef = ref(db, `rooms/${currentRoom}/players/${myId}`);
+                remove(playerRef).then(() => {
+                    location.reload(); // Refresh to reset everything
+                });
+            }
         };
     </script>
 </body>
