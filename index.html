@@ -50,172 +50,183 @@
     </div>
 
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getDatabase, ref, set, onValue, update, onDisconnect, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getDatabase, ref, set, onValue, update, onDisconnect, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-        const firebaseConfig = {
-            apiKey: "AIzaSyDfpiAPFdf-TGrzZksRDXecy7szOoU_5ts",
-            authDomain: "bingo-964ba.firebaseapp.com",
-            databaseURL: "https://bingo-964ba-default-rtdb.asia-southeast1.firebasedatabase.app",
-            projectId: "bingo-964ba",
-            storageBucket: "bingo-964ba.firebasestorage.app",
-            messagingSenderId: "870098576889",
-            appId: "1:870098576889:web:7d1e32ca3d091a2aa44928"
-        };
+    const firebaseConfig = {
+        apiKey: "AIzaSyDfpiAPFdf-TGrzZksRDXecy7szOoU_5ts",
+        authDomain: "bingo-964ba.firebaseapp.com",
+        databaseURL: "https://bingo-964ba-default-rtdb.asia-southeast1.firebasedatabase.app",
+        projectId: "bingo-964ba",
+        storageBucket: "bingo-964ba.firebasestorage.app",
+        messagingSenderId: "870098576889",
+        appId: "1:870098576889:web:7d1e32ca3d091a2aa44928"
+    };
 
-        const app = initializeApp(firebaseConfig);
-        const db = getDatabase(app);
-        const myId = "player_" + Math.floor(Math.random() * 1000000);
-        let currentRoom = "";
-        let isGameOver = false;
-        let isGameActive = false; // Biến quan trọng để check đủ 2 người
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    
+    const myId = "player_" + Math.floor(Math.random() * 1000000);
+    let currentRoom = "";
+    let isGameOver = false;
+    let isGameActive = false;
+    let currentMarkedCount = 0; // Theo dõi số lượng ô đã đánh
 
-        function shuffle(array) { return array.sort(() => Math.random() - 0.5); }
+    function shuffle(array) { return array.sort(() => Math.random() - 0.5); }
 
-        window.createBoard = function() {
-            const board = document.getElementById('bingoBoard');
-            board.innerHTML = '';
-            const numbers = Array.from({length: 25}, (_, i) => i + 1);
-            const shuffled = shuffle(numbers);
-            shuffled.forEach((num, index) => {
-                let div = document.createElement('div');
-                div.className = 'cell';
-                div.innerText = num;
-                div.id = `pos-${index}`;
-                div.setAttribute('data-num', num);
-                div.onclick = () => markNumber(num);
-                board.appendChild(div);
-            });
-            isGameOver = false;
+    // Hàm tạo bàn cờ mới
+    window.createBoard = function() {
+        const board = document.getElementById('bingoBoard');
+        board.innerHTML = '';
+        const numbers = Array.from({length: 25}, (_, i) => i + 1);
+        const shuffled = shuffle(numbers);
+        shuffled.forEach((num, index) => {
+            let div = document.createElement('div');
+            div.className = 'cell';
+            div.innerText = num;
+            div.id = `pos-${index}`;
+            div.setAttribute('data-num', num);
+            div.onclick = () => markNumber(num);
+            board.appendChild(div);
+        });
+        isGameOver = false;
+        updateShuffleVisibility(); // Kiểm tra hiện nút shuffle
+    }
+
+    // Hàm quan trọng: Kiểm tra xem có được phép hiện nút Shuffle không
+    function updateShuffleVisibility() {
+        const shuffleBtn = document.getElementById('shuffleBtn');
+        if (isGameActive && currentMarkedCount === 0 && !isGameOver) {
+            shuffleBtn.style.display = 'block';
+        } else {
+            shuffleBtn.style.display = 'none';
         }
+    }
 
-        window.joinRoom = function() {
-            const id = document.getElementById('roomId').value;
-            if (!id) return alert("Enter a Room Name");
-            currentRoom = id;
+    window.joinRoom = function() {
+        const id = document.getElementById('roomId').value;
+        if (!id) return alert("Enter a Room Name");
+        currentRoom = id;
+        
+        const playerRef = ref(db, `rooms/${currentRoom}/players/${myId}`);
+        set(playerRef, true);
+        onDisconnect(playerRef).remove();
+
+        document.getElementById('joinBtn').disabled = true;
+        document.getElementById('status').innerText = "Waiting for an opponent...";
+
+        // 1. Theo dõi số lượng người chơi
+        onValue(ref(db, `rooms/${currentRoom}/players`), (snapshot) => {
+            const players = snapshot.val() || {};
+            const playerCount = Object.keys(players).length;
+            if (playerCount >= 2) {
+                isGameActive = true;
+                document.getElementById('roomControls').style.display = 'none'; 
+                document.getElementById('gameArea').style.display = 'flex';
+                
+                if (!document.getElementById('bingoBoard').innerHTML) {
+                    createBoard();
+                }
+                updateShuffleVisibility();
+            } else {
+                isGameActive = false;
+                document.getElementById('gameArea').style.display = 'none';
+                document.getElementById('roomControls').style.display = 'flex'; 
+                document.getElementById('status').innerText = "Waiting for an opponent...";
+            }
+        });
+
+        // 2. Theo dõi các số đã đánh
+        onValue(ref(db, `rooms/${currentRoom}/marked`), (snapshot) => {
+            const markedNumbers = snapshot.val() || {};
+            currentMarkedCount = Object.keys(markedNumbers).length;
+
+            if (currentMarkedCount === 0) {
+                isGameOver = false;
+                resetUI();
+            }
+
+            document.querySelectorAll('.cell').forEach(el => {
+                const num = el.getAttribute('data-num');
+                if (markedNumbers[num]) el.classList.add('marked');
+                else el.classList.remove('marked');
+            });
             
+            checkBingo();
+            updateShuffleVisibility();
+        });
+
+        // 3. Theo dõi người thắng
+        onValue(ref(db, `rooms/${currentRoom}/winner`), (snapshot) => {
+            const winnerId = snapshot.val();
+            if (winnerId) {
+                isGameOver = true;
+                document.getElementById('afterGameActions').style.display = 'flex';
+                updateShuffleVisibility();
+                if (winnerId === myId) document.getElementById('winMsg').style.display = 'block';
+                else document.getElementById('loseMsg').style.display = 'block';
+            } else {
+                resetUI();
+            }
+        });
+    };
+
+    function resetUI() {
+        document.getElementById('winMsg').style.display = 'none';
+        document.getElementById('loseMsg').style.display = 'none';
+        document.getElementById('afterGameActions').style.display = 'none';
+        if (isGameActive) {
+            document.getElementById('status').innerText = "In Match | Lines: 0 / 5";
+        }
+    }
+
+    window.markNumber = function(num) {
+        if (!currentRoom || isGameOver || !isGameActive) return;
+        update(ref(db, `rooms/${currentRoom}/marked`), { [num]: true });
+    };
+
+    function checkBingo() {
+        const cells = document.querySelectorAll('.cell');
+        if (cells.length === 0) return;
+        cells.forEach(c => c.classList.remove('winning-cell', 'line-h', 'line-v', 'line-d1', 'line-d2'));
+        
+        let lines = 0;
+        const winningLines = [
+            {indices: [0,1,2,3,4], type: 'line-h'}, {indices: [5,6,7,8,9], type: 'line-h'}, 
+            {indices: [10,11,12,13,14], type: 'line-h'}, {indices: [15,16,17,18,19], type: 'line-h'}, 
+            {indices: [20,21,22,23,24], type: 'line-h'},
+            {indices: [0,5,10,15,20], type: 'line-v'}, {indices: [1,6,11,16,21], type: 'line-v'}, 
+            {indices: [2,7,12,17,22], type: 'line-v'}, {indices: [3,8,13,18,23], type: 'line-v'}, 
+            {indices: [4,9,14,19,24], type: 'line-v'},
+            {indices: [0,6,12,18,24], type: 'line-d1'}, {indices: [4,8,12,16,20], type: 'line-d2'}
+        ];
+
+        winningLines.forEach(line => {
+            if (line.indices.every(idx => cells[idx].classList.contains('marked'))) {
+                lines++;
+                line.indices.forEach(idx => cells[idx].classList.add('winning-cell', line.type));
+            }
+        });
+
+        if (lines >= 5 && !isGameOver) {
+            set(ref(db, `rooms/${currentRoom}/winner`), myId);
+        } else if (currentRoom && isGameActive && !isGameOver) {
+            document.getElementById('status').innerText = "In Match | Lines: " + lines + " / 5";
+        }
+    }
+
+    window.newGame = function() {
+        const roomRef = ref(db, `rooms/${currentRoom}`);
+        update(roomRef, { marked: {}, winner: null });
+        createBoard();
+    };
+
+    window.leaveRoom = function() {
+        if (currentRoom) {
             const playerRef = ref(db, `rooms/${currentRoom}/players/${myId}`);
-            set(playerRef, true);
-            onDisconnect(playerRef).remove();
-
-            document.getElementById('joinBtn').disabled = true;
-
-            // 1. Quản lý trạng thái người chơi
-            onValue(ref(db, `rooms/${currentRoom}/players`), (snapshot) => {
-                const players = snapshot.val() || {};
-                const playerCount = Object.keys(players).length;
-                if (playerCount >= 2) {
-                    isGameActive = true;
-                    document.getElementById('roomControls').style.display = 'none'; 
-                    document.getElementById('gameArea').style.display = 'flex';
-                    if(!isGameOver) document.getElementById('status').innerText = "Match Started!"; 
-                    if (!document.getElementById('bingoBoard').innerHTML) createBoard();
-                } else {
-                    isGameActive = false;
-                    document.getElementById('gameArea').style.display = 'none';
-                    document.getElementById('roomControls').style.display = 'flex'; 
-                    document.getElementById('status').innerText = "Waiting for an opponent...";
-                }
-            });
-
-            // 2. Đồng bộ đánh dấu và nút Shuffle
-            onValue(ref(db, `rooms/${currentRoom}/marked`), (snapshot) => {
-                const markedNumbers = snapshot.val() || {};
-                const markedCount = Object.keys(markedNumbers).length;
-
-                // Nếu marked bị xóa sạch -> ván mới bắt đầu cho cả 2
-                if (markedCount === 0) {
-                    isGameOver = false;
-                    resetUI();
-                }
-
-                const shuffleBtn = document.getElementById('shuffleBtn');
-                if (isGameActive && markedCount === 0 && !isGameOver) {
-                    shuffleBtn.style.display = 'block';
-                } else {
-                    shuffleBtn.style.display = 'none';
-                }
-
-                document.querySelectorAll('.cell').forEach(el => {
-                    const num = el.getAttribute('data-num');
-                    if (markedNumbers[num]) el.classList.add('marked');
-                    else el.classList.remove('marked');
-                });
-                checkBingo();
-            });
-
-            // 3. Lắng nghe người thắng
-            onValue(ref(db, `rooms/${currentRoom}/winner`), (snapshot) => {
-                const winnerId = snapshot.val();
-                if (winnerId) {
-                    isGameOver = true;
-                    document.getElementById('afterGameActions').style.display = 'flex';
-                    document.getElementById('shuffleBtn').style.display = 'none';
-                    if (winnerId === myId) document.getElementById('winMsg').style.display = 'block';
-                    else document.getElementById('loseMsg').style.display = 'block';
-                } else {
-                    resetUI();
-                }
-            });
-        };
-
-        function resetUI() {
-            document.getElementById('winMsg').style.display = 'none';
-            document.getElementById('loseMsg').style.display = 'none';
-            document.getElementById('afterGameActions').style.display = 'none';
-            if (isGameActive) {
-                document.getElementById('status').innerText = "In Match | Lines: 0 / 5";
-            }
-            isGameOver = false;
+            remove(playerRef).then(() => { location.reload(); });
         }
-
-        window.markNumber = function(num) {
-            if (!currentRoom || isGameOver || !isGameActive) return;
-            update(ref(db, `rooms/${currentRoom}/marked`), { [num]: true });
-        };
-
-        function checkBingo() {
-            const cells = document.querySelectorAll('.cell');
-            if (cells.length === 0) return;
-            cells.forEach(c => c.classList.remove('winning-cell', 'line-h', 'line-v', 'line-d1', 'line-d2'));
-            
-            let lines = 0;
-            const winningLines = [
-                {indices: [0,1,2,3,4], type: 'line-h'}, {indices: [5,6,7,8,9], type: 'line-h'}, 
-                {indices: [10,11,12,13,14], type: 'line-h'}, {indices: [15,16,17,18,19], type: 'line-h'}, 
-                {indices: [20,21,22,23,24], type: 'line-h'},
-                {indices: [0,5,10,15,20], type: 'line-v'}, {indices: [1,6,11,16,21], type: 'line-v'}, 
-                {indices: [2,7,12,17,22], type: 'line-v'}, {indices: [3,8,13,18,23], type: 'line-v'}, 
-                {indices: [4,9,14,19,24], type: 'line-v'},
-                {indices: [0,6,12,18,24], type: 'line-d1'}, {indices: [4,8,12,16,20], type: 'line-d2'}
-            ];
-
-            winningLines.forEach(line => {
-                if (line.indices.every(idx => cells[idx].classList.contains('marked'))) {
-                    lines++;
-                    line.indices.forEach(idx => cells[idx].classList.add('winning-cell', line.type));
-                }
-            });
-
-            if (lines >= 5 && !isGameOver) {
-                set(ref(db, `rooms/${currentRoom}/winner`), myId);
-            } else if (currentRoom && isGameActive && !isGameOver) {
-                document.getElementById('status').innerText = "In Match | Lines: " + lines + " / 5";
-            }
-        }
-
-        window.newGame = function() {
-            const roomRef = ref(db, `rooms/${currentRoom}`);
-            update(roomRef, { marked: {}, winner: null });
-            createBoard();
-        };
-
-        window.leaveRoom = function() {
-            if (currentRoom) {
-                const playerRef = ref(db, `rooms/${currentRoom}/players/${myId}`);
-                remove(playerRef).then(() => { location.reload(); });
-            }
-        };
-    </script>
+    };
+</script>
 </body>
 </html>
