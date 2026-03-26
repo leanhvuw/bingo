@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Bingo Realtime - 2 Players Match</title>
+    <title>Bingo</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; background-color: #f4f7f6; padding-top: 20px; }
         .controls { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; display: flex; gap: 10px; }
@@ -10,11 +10,10 @@
         button { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.2s; }
         .btn-join { background-color: #007bff; color: white; }
         .btn-newgame { background-color: #28a745; color: white; margin-top: 15px; display: none; }
+        .btn-shuffle { background-color: #6c757d; color: white; margin-bottom: 10px; display: none; }
         .status { color: #666; font-weight: bold; margin-bottom: 10px; height: 25px; font-size: 1.1rem; text-align: center; }
         
-        /* Board visibility */
         #gameArea { display: none; flex-direction: column; align-items: center; }
-        
         .grid { display: grid; grid-template-columns: repeat(5, 70px); gap: 10px; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); position: relative; }
         .cell { width: 70px; height: 70px; border: 2px solid #eee; display: flex; align-items: center; justify-content: center; 
                 cursor: pointer; font-size: 1.2rem; font-weight: bold; border-radius: 8px; background: #fff; position: relative; overflow: hidden; }
@@ -44,13 +43,14 @@
     <div id="gameArea">
         <div id="winMsg">★ BINGO! YOU WIN ★</div>
         <div id="loseMsg">GAME OVER - YOU LOSE</div>
+        <button id="shuffleBtn" class="btn-shuffle" onclick="createBoard()">Shuffle Board</button>
         <div id="bingoBoard" class="grid"></div>
         <button id="newGameBtn" class="btn-newgame" onclick="newGame()">Start New Match</button>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getDatabase, ref, set, onValue, update, onDisconnect, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        import { getDatabase, ref, set, onValue, update, onDisconnect } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDfpiAPFdf-TGrzZksRDXecy7szOoU_5ts",
@@ -71,7 +71,7 @@
 
         function shuffle(array) { return array.sort(() => Math.random() - 0.5); }
 
-        function createBoard() {
+        window.createBoard = function() {
             const board = document.getElementById('bingoBoard');
             board.innerHTML = '';
             const numbers = Array.from({length: 25}, (_, i) => i + 1);
@@ -93,50 +93,57 @@
             if (!id) return alert("Enter a Room Name");
             currentRoom = id;
             
-            // Register player in the room
             const playerRef = ref(db, `rooms/${currentRoom}/players/${myId}`);
             set(playerRef, true);
-            onDisconnect(playerRef).remove(); // Auto-remove when tab closes
+            onDisconnect(playerRef).remove();
 
             document.getElementById('joinBtn').disabled = true;
             document.getElementById('status').innerText = "Waiting for an opponent...";
 
-            // 1. Listen for player count
+            // Fix: Status update when 2 players join
             onValue(ref(db, `rooms/${currentRoom}/players`), (snapshot) => {
                 const players = snapshot.val() || {};
                 const playerCount = Object.keys(players).length;
                 if (playerCount >= 2) {
                     document.getElementById('gameArea').style.display = 'flex';
+                    document.getElementById('status').innerText = "Match Started!"; 
                     if (!document.getElementById('bingoBoard').innerHTML) {
                         createBoard();
                     }
                 } else {
                     document.getElementById('gameArea').style.display = 'none';
-                    document.getElementById('status').innerText = "Opponent left. Waiting for a new player...";
+                    document.getElementById('status').innerText = "Waiting for an opponent...";
                 }
             });
 
-            // 2. Listen for marked numbers
             onValue(ref(db, `rooms/${currentRoom}/marked`), (snapshot) => {
                 const markedNumbers = snapshot.val() || {};
+                const markedCount = Object.keys(markedNumbers).length;
+
+                // Feature: Only show shuffle if no numbers are picked yet
+                const shuffleBtn = document.getElementById('shuffleBtn');
+                if (markedCount === 0 && !isGameOver) {
+                    shuffleBtn.style.display = 'block';
+                } else {
+                    shuffleBtn.style.display = 'none';
+                }
+
                 document.querySelectorAll('.cell').forEach(el => {
                     const num = el.getAttribute('data-num');
                     if (markedNumbers[num]) el.classList.add('marked');
                     else el.classList.remove('marked');
                 });
+                
                 checkBingo();
-                // If marks are cleared, reset UI
-                if (Object.keys(markedNumbers).length === 0) {
-                    resetUI();
-                }
+                if (markedCount === 0) resetUI();
             });
 
-            // 3. Listen for winner
             onValue(ref(db, `rooms/${currentRoom}/winner`), (snapshot) => {
                 const winnerId = snapshot.val();
                 if (winnerId) {
                     isGameOver = true;
                     document.getElementById('newGameBtn').style.display = 'block';
+                    document.getElementById('shuffleBtn').style.display = 'none';
                     if (winnerId === myId) document.getElementById('winMsg').style.display = 'block';
                     else document.getElementById('loseMsg').style.display = 'block';
                 } else {
@@ -159,6 +166,7 @@
 
         function checkBingo() {
             const cells = document.querySelectorAll('.cell');
+            if (cells.length === 0) return;
             cells.forEach(c => c.classList.remove('winning-cell', 'line-h', 'line-v', 'line-d1', 'line-d2'));
             
             let lines = 0;
@@ -181,18 +189,14 @@
 
             if (lines >= 5 && !isGameOver) {
                 set(ref(db, `rooms/${currentRoom}/winner`), myId);
-            } else if (currentRoom) {
+            } else if (currentRoom && !isGameOver) {
                 document.getElementById('status').innerText = "In Match | Lines: " + lines + " / 5";
             }
         }
 
         window.newGame = function() {
-            // Only clear gameplay data, keep player list
             const roomRef = ref(db, `rooms/${currentRoom}`);
-            update(roomRef, {
-                marked: {},
-                winner: null
-            });
+            update(roomRef, { marked: {}, winner: null });
             createBoard();
         };
     </script>
