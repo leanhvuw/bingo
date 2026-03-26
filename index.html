@@ -1,65 +1,99 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Bingo Peer-to-Peer</title>
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <meta charset="UTF-8">
+    <title>Online Bingo</title>
     <style>
-        .grid { display: grid; grid-template-columns: repeat(5, 60px); gap: 5px; margin-top: 20px; }
-        .cell { width: 60px; height: 60px; border: 1px solid #333; text-align: center; line-height: 60px; cursor: pointer; }
-        .cell.marked { background-color: #ffcc00; }
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding-top: 50px; }
+        .grid { display: grid; grid-template-columns: repeat(5, 60px); gap: 10px; margin-top: 20px; }
+        .cell { width: 60px; height: 60px; border: 2px solid #333; display: flex; align-items: center; 
+                justify-content: center; cursor: pointer; font-weight: bold; border-radius: 8px; transition: 0.3s; }
+        .cell:hover { background-color: #f0f0f0; }
+        .marked { background-color: #ffcc00; border-color: #e6b800; transform: scale(0.95); }
+        .controls { margin-bottom: 20px; }
+        input { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 8px 15px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
     </style>
 </head>
 <body>
-    <h3>ID của bạn: <span id="my-id">...</span></h3>
-    <input type="text" id="peer-id" placeholder="Nhập ID bạn bè">
-    <button onclick="connectToPeer()">Kết nối</button>
-    <p id="status">Chưa kết nối</p>
 
-    <div class="grid" id="bingo-board"></div>
+    <div class="controls">
+        <input type="text" id="roomId" placeholder="Enter Room ID...">
+        <button onclick="joinRoom()">Join Room</button>
+    </div>
 
-    <script>
-        const peer = new Peer();
-        let conn;
-        const board = document.getElementById('bingo-board');
+    <div id="bingoBoard" class="grid"></div>
 
-        // Hiển thị ID để gửi cho bạn bè
-        peer.on('open', id => document.getElementById('my-id').innerText = id);
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, set, onValue, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-        // Tạo bàn cờ 1-25
-        for (let i = 1; i <= 25; i++) {
-            let div = document.createElement('div');
-            div.className = 'cell';
-            div.innerText = i;
-            div.onclick = () => markCell(i, true);
-            div.id = 'cell-' + i;
-            board.appendChild(div);
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyDfpiAPFdf-TGrzZksRDXecy7szOoU_5ts",
+            authDomain: "bingo-964ba.firebaseapp.com",
+            databaseURL: "https://bingo-964ba-default-rtdb.firebaseio.com",
+            projectId: "bingo-964ba",
+            storageBucket: "bingo-964ba.firebasestorage.app",
+            messagingSenderId: "870098576889",
+            appId: "1:870098576889:web:7d1e32ca3d091a2aa44928",
+            measurementId: "G-M5YF87ZDMW"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        let currentRoom = "";
+
+        // 1. Create the Bingo board (Static 1-25 for testing)
+        function createBoard() {
+            const board = document.getElementById('bingoBoard');
+            board.innerHTML = '';
+            for (let i = 1; i <= 25; i++) {
+                let div = document.createElement('div');
+                div.className = 'cell';
+                div.innerText = i;
+                div.id = `num-${i}`;
+                div.onclick = () => markNumber(i);
+                board.appendChild(div);
+            }
         }
 
-        // Khi có người khác kết nối đến mình
-        peer.on('connection', c => {
-            conn = c;
-            setupHandler();
-            document.getElementById('status').innerText = "Đã kết nối!";
-        });
+        // 2. Join a Room function
+        window.joinRoom = function() {
+            const id = document.getElementById('roomId').value;
+            if (!id) return alert("Please enter a Room ID!");
+            currentRoom = id;
 
-        // Chủ động kết nối tới bạn bè
-        function connectToPeer() {
-            const id = document.getElementById('peer-id').value;
-            conn = peer.connect(id);
-            setupHandler();
-            document.getElementById('status').innerText = "Đang kết nối...";
+            // Clear old UI markers
+            document.querySelectorAll('.cell').forEach(c => c.classList.remove('marked'));
+
+            // Listen for changes in the specific room
+            const roomRef = ref(db, 'rooms/' + currentRoom + '/markedNumbers');
+            onValue(roomRef, (snapshot) => {
+                const markedData = snapshot.val() || {};
+                
+                // Update board based on Firebase data
+                document.querySelectorAll('.cell').forEach(c => c.classList.remove('marked'));
+                Object.keys(markedData).forEach(num => {
+                    const el = document.getElementById(`num-${num}`);
+                    if (el) el.classList.add('marked');
+                });
+            });
+
+            alert("Joined room: " + currentRoom);
+        };
+
+        // 3. Mark number function
+        function markNumber(num) {
+            if (!currentRoom) return alert("Please join a room first!");
+            
+            // Sync marked number to Firebase
+            const updates = {};
+            updates[`/rooms/${currentRoom}/markedNumbers/${num}`] = true;
+            update(ref(db), updates);
         }
 
-        function setupHandler() {
-            conn.on('open', () => document.getElementById('status').innerText = "Đã kết nối!");
-            conn.on('data', data => markCell(data, false)); // Nhận dữ liệu từ bạn
-        }
-
-        function markCell(num, send) {
-            const cell = document.getElementById('cell-' + num);
-            cell.classList.add('marked');
-            if (send && conn) conn.send(num); // Gửi số vừa chọn cho bạn
-        }
+        createBoard();
     </script>
 </body>
 </html>
