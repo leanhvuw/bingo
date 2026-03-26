@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Bingo Peer-to-Peer</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        .grid { display: grid; grid-template-columns: repeat(5, 60px); gap: 5px; margin-top: 20px; }
+        .cell { width: 60px; height: 60px; border: 1px solid #333; text-align: center; line-height: 60px; cursor: pointer; }
+        .cell.marked { background-color: #ffcc00; }
+    </style>
+</head>
+<body>
+    <h3>ID của bạn: <span id="my-id">...</span></h3>
+    <input type="text" id="peer-id" placeholder="Nhập ID bạn bè">
+    <button onclick="connectToPeer()">Kết nối</button>
+    <p id="status">Chưa kết nối</p>
+
+    <div class="grid" id="bingo-board"></div>
+
+    <script>
+        const peer = new Peer();
+        let conn;
+        const board = document.getElementById('bingo-board');
+
+        // Hiển thị ID để gửi cho bạn bè
+        peer.on('open', id => document.getElementById('my-id').innerText = id);
+
+        // Tạo bàn cờ 1-25
+        for (let i = 1; i <= 25; i++) {
+            let div = document.createElement('div');
+            div.className = 'cell';
+            div.innerText = i;
+            div.onclick = () => markCell(i, true);
+            div.id = 'cell-' + i;
+            board.appendChild(div);
+        }
+
+        // Khi có người khác kết nối đến mình
+        peer.on('connection', c => {
+            conn = c;
+            setupHandler();
+            document.getElementById('status').innerText = "Đã kết nối!";
+        });
+
+        // Chủ động kết nối tới bạn bè
+        function connectToPeer() {
+            const id = document.getElementById('peer-id').value;
+            conn = peer.connect(id);
+            setupHandler();
+            document.getElementById('status').innerText = "Đang kết nối...";
+        }
+
+        function setupHandler() {
+            conn.on('open', () => document.getElementById('status').innerText = "Đã kết nối!");
+            conn.on('data', data => markCell(data, false)); // Nhận dữ liệu từ bạn
+        }
+
+        function markCell(num, send) {
+            const cell = document.getElementById('cell-' + num);
+            cell.classList.add('marked');
+            if (send && conn) conn.send(num); // Gửi số vừa chọn cho bạn
+        }
+    </script>
+</body>
+</html>
