@@ -2,36 +2,43 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Bingo Realtime</title>
+    <title>Bingo Realtime - Play</title>
     <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding-top: 30px; }
-        .grid { display: grid; grid-template-columns: repeat(5, 60px); gap: 10px; margin-top: 20px; }
-        .cell { width: 60px; height: 60px; border: 2px solid #333; display: flex; align-items: center; 
-                justify-content: center; cursor: pointer; font-weight: bold; border-radius: 12px; }
-        .marked { background-color: #ffcc00; border-color: #e6b800; }
-        .controls { display: flex; gap: 10px; }
-        input { padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
-        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
-        #status { margin-top: 15px; color: green; font-weight: bold; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; background-color: #f4f7f6; padding-top: 20px; }
+        .controls { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; display: flex; gap: 10px; }
+        input { padding: 10px; border: 1px solid #ddd; border-radius: 5px; width: 150px; }
+        button { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        .btn-join { background-color: #007bff; color: white; }
+        .btn-reset { background-color: #dc3545; color: white; margin-top: 10px; }
+        button:hover { opacity: 0.8; }
+        .status { color: #28a745; font-weight: bold; margin-bottom: 10px; height: 20px; }
+        .grid { display: grid; grid-template-columns: repeat(5, 70px); gap: 10px; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .cell { width: 70px; height: 70px; border: 2px solid #eee; display: flex; align-items: center; justify-content: center; 
+                cursor: pointer; font-size: 1.2rem; font-weight: bold; border-radius: 8px; transition: all 0.2s; background: #fff; }
+        .cell:hover { border-color: #007bff; background: #f0f7ff; }
+        .marked { background-color: #ffc107 !important; border-color: #ff9800 !important; color: #fff; transform: scale(0.95); }
     </style>
 </head>
 <body>
 
     <div class="controls">
-        <input type="text" id="roomId" placeholder="Enter Room Name">
-        <button onclick="joinRoom()">Join / Create Room</button>
+        <input type="text" id="roomId" placeholder="Room ID (e.g. 1234)">
+        <button class="btn-join" onclick="joinRoom()">Join / Create</button>
     </div>
-    <div id="status"></div>
+
+    <div id="status" class="status"></div>
     <div id="bingoBoard" class="grid"></div>
+    <button id="resetBtn" class="btn-reset" onclick="resetGame()" style="display:none;">Reset Board</button>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getDatabase, ref, set, onValue, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
+        // IMPORTANT: Check your actual Database URL in Firebase Console
         const firebaseConfig = {
             apiKey: "AIzaSyDfpiAPFdf-TGrzZksRDXecy7szOoU_5ts",
             authDomain: "bingo-964ba.firebaseapp.com",
-            databaseURL: "https://bingo-964ba-default-rtdb.firebaseio.com",
+            databaseURL: "https://bingo-964ba-default-rtdb.asia-southeast1.firebasedatabase.app",
             projectId: "bingo-964ba",
             storageBucket: "bingo-964ba.firebasestorage.app",
             messagingSenderId: "870098576889",
@@ -42,7 +49,7 @@
         const db = getDatabase(app);
         let currentRoom = "";
 
-        // 1. Shuffle numbers for a random board
+        // Shuffle logic
         function shuffle(array) {
             return array.sort(() => Math.random() - 0.5);
         }
@@ -61,20 +68,23 @@
                 div.onclick = () => markNumber(num);
                 board.appendChild(div);
             });
+            document.getElementById('resetBtn').style.display = 'block';
         }
 
-        // 2. Join/Create logic
         window.joinRoom = function() {
             const id = document.getElementById('roomId').value;
-            if (!id) return alert("Enter a Room Name!");
+            if (!id) return alert("Please enter a Room ID");
             currentRoom = id;
             
             document.getElementById('status').innerText = "Connected to Room: " + id;
             createBoard();
 
-            // Sync: Listen for marked numbers
-            onValue(ref(db, 'rooms/' + currentRoom + '/marked'), (snapshot) => {
+            // Sync from Firebase
+            const roomRef = ref(db, 'rooms/' + currentRoom + '/marked');
+            onValue(roomRef, (snapshot) => {
                 const data = snapshot.val() || {};
+                // Clear all marks first for clean update
+                document.querySelectorAll('.cell').forEach(el => el.classList.remove('marked'));
                 Object.keys(data).forEach(num => {
                     const el = document.getElementById(`cell-${num}`);
                     if (el) el.classList.add('marked');
@@ -82,13 +92,22 @@
             });
         };
 
-        // 3. Mark number for both players
-        function markNumber(num) {
+        window.markNumber = function(num) {
             if (!currentRoom) return alert("Join a room first!");
             const updates = {};
             updates[`/rooms/${currentRoom}/marked/${num}`] = true;
-            update(ref(db), updates);
-        }
+            update(ref(db), updates).catch(err => {
+                alert("Permission Denied! Check your Firebase Rules.");
+                console.error(err);
+            });
+        };
+
+        window.resetGame = function() {
+            if (!currentRoom) return;
+            if (confirm("Reset the whole room?")) {
+                set(ref(db, 'rooms/' + currentRoom + '/marked'), null);
+            }
+        };
     </script>
 </body>
 </html>
