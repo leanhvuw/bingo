@@ -2,39 +2,39 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Bingo Realtime - Play</title>
+    <title>Bingo Realtime - 5 Lines to Win</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; background-color: #f4f7f6; padding-top: 20px; }
+        body { font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; background-color: #f4f7f6; padding-top: 20px; }
         .controls { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; display: flex; gap: 10px; }
         input { padding: 10px; border: 1px solid #ddd; border-radius: 5px; width: 150px; }
         button { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.2s; }
         .btn-join { background-color: #007bff; color: white; }
-        .btn-reset { background-color: #dc3545; color: white; margin-top: 10px; }
-        button:hover { opacity: 0.8; }
-        .status { color: #28a745; font-weight: bold; margin-bottom: 10px; height: 20px; }
+        .btn-newgame { background-color: #28a745; color: white; margin-top: 15px; display: none; }
+        .status { color: #28a745; font-weight: bold; margin-bottom: 10px; height: 25px; font-size: 1.2rem; }
         .grid { display: grid; grid-template-columns: repeat(5, 70px); gap: 10px; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
         .cell { width: 70px; height: 70px; border: 2px solid #eee; display: flex; align-items: center; justify-content: center; 
-                cursor: pointer; font-size: 1.2rem; font-weight: bold; border-radius: 8px; transition: all 0.2s; background: #fff; }
-        .cell:hover { border-color: #007bff; background: #f0f7ff; }
+                cursor: pointer; font-size: 1.2rem; font-weight: bold; border-radius: 8px; background: #fff; }
         .marked { background-color: #ffc107 !important; border-color: #ff9800 !important; color: #fff; transform: scale(0.95); }
+        .bingo-overlay { color: #d63384; font-size: 2rem; animation: pulse 1s infinite; display: none; font-weight: 900; margin-bottom: 10px; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
     </style>
 </head>
 <body>
 
     <div class="controls">
-        <input type="text" id="roomId" placeholder="Room ID (e.g. 1234)">
+        <input type="text" id="roomId" placeholder="Room ID">
         <button class="btn-join" onclick="joinRoom()">Join / Create</button>
     </div>
 
+    <div id="bingoMsg" class="bingo-overlay">★ BINGO! ★</div>
     <div id="status" class="status"></div>
     <div id="bingoBoard" class="grid"></div>
-    <button id="resetBtn" class="btn-reset" onclick="resetGame()" style="display:none;">Reset Board</button>
+    <button id="newGameBtn" class="btn-newgame" onclick="newGame()">Start New Game</button>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getDatabase, ref, set, onValue, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-        // IMPORTANT: Check your actual Database URL in Firebase Console
         const firebaseConfig = {
             apiKey: "AIzaSyDfpiAPFdf-TGrzZksRDXecy7szOoU_5ts",
             authDomain: "bingo-964ba.firebaseapp.com",
@@ -48,8 +48,8 @@
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
         let currentRoom = "";
+        let boardLayout = []; // To store numbers position
 
-        // Shuffle logic
         function shuffle(array) {
             return array.sort(() => Math.random() - 0.5);
         }
@@ -58,54 +58,73 @@
             const board = document.getElementById('bingoBoard');
             board.innerHTML = '';
             const numbers = Array.from({length: 25}, (_, i) => i + 1);
-            const shuffled = shuffle(numbers);
+            boardLayout = shuffle(numbers);
 
-            shuffled.forEach(num => {
+            boardLayout.forEach((num, index) => {
                 let div = document.createElement('div');
                 div.className = 'cell';
                 div.innerText = num;
-                div.id = `cell-${num}`;
+                div.id = `pos-${index}`;
+                div.setAttribute('data-num', num);
                 div.onclick = () => markNumber(num);
                 board.appendChild(div);
             });
-            document.getElementById('resetBtn').style.display = 'block';
+            document.getElementById('newGameBtn').style.display = 'block';
+            document.getElementById('bingoMsg').style.display = 'none';
         }
 
         window.joinRoom = function() {
             const id = document.getElementById('roomId').value;
             if (!id) return alert("Please enter a Room ID");
             currentRoom = id;
-            
-            document.getElementById('status').innerText = "Connected to Room: " + id;
+            document.getElementById('status').innerText = "Room: " + id;
             createBoard();
 
-            // Sync from Firebase
-            const roomRef = ref(db, 'rooms/' + currentRoom + '/marked');
-            onValue(roomRef, (snapshot) => {
-                const data = snapshot.val() || {};
-                // Clear all marks first for clean update
-                document.querySelectorAll('.cell').forEach(el => el.classList.remove('marked'));
-                Object.keys(data).forEach(num => {
-                    const el = document.getElementById(`cell-${num}`);
-                    if (el) el.classList.add('marked');
+            onValue(ref(db, 'rooms/' + currentRoom + '/marked'), (snapshot) => {
+                const markedNumbers = snapshot.val() || {};
+                document.querySelectorAll('.cell').forEach(el => {
+                    const num = el.getAttribute('data-num');
+                    if (markedNumbers[num]) el.classList.add('marked');
+                    else el.classList.remove('marked');
                 });
+                checkBingo();
             });
         };
 
         window.markNumber = function(num) {
             if (!currentRoom) return alert("Join a room first!");
-            const updates = {};
-            updates[`/rooms/${currentRoom}/marked/${num}`] = true;
-            update(ref(db), updates).catch(err => {
-                alert("Permission Denied! Check your Firebase Rules.");
-                console.error(err);
-            });
+            update(ref(db, `rooms/${currentRoom}/marked`), { [num]: true });
         };
 
-        window.resetGame = function() {
-            if (!currentRoom) return;
-            if (confirm("Reset the whole room?")) {
+        function checkBingo() {
+            const cells = document.querySelectorAll('.cell');
+            let lines = 0;
+
+            // Winning combinations (indices 0-24)
+            const winningLines = [
+                [0,1,2,3,4], [5,6,7,8,9], [10,11,12,13,14], [15,16,17,18,19], [20,21,22,23,24], // Rows
+                [0,5,10,15,20], [1,6,11,16,21], [2,7,12,17,22], [3,8,13,18,23], [4,9,14,19,24], // Cols
+                [0,6,12,18,24], [4,8,12,16,20] // Diagonals
+            ];
+
+            winningLines.forEach(line => {
+                if (line.every(idx => cells[idx].classList.contains('marked'))) {
+                    lines++;
+                }
+            });
+
+            if (lines >= 5) {
+                document.getElementById('bingoMsg').style.display = 'block';
+                document.getElementById('status').innerText = "YOU WIN WITH " + lines + " LINES!";
+            } else {
+                document.getElementById('status').innerText = "Lines: " + lines + " / 5";
+            }
+        }
+
+        window.newGame = function() {
+            if (confirm("Reset game for everyone in this room?")) {
                 set(ref(db, 'rooms/' + currentRoom + '/marked'), null);
+                createBoard();
             }
         };
     </script>
