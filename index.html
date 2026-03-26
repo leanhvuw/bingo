@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Bingo Realtime - With Strike Lines</title>
+    <title>Bingo Realtime - 2 Players Match</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; background-color: #f4f7f6; padding-top: 20px; }
         .controls { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; display: flex; gap: 10px; }
@@ -10,31 +10,21 @@
         button { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.2s; }
         .btn-join { background-color: #007bff; color: white; }
         .btn-newgame { background-color: #28a745; color: white; margin-top: 15px; display: none; }
-        .status { color: #666; font-weight: bold; margin-bottom: 10px; height: 25px; font-size: 1.1rem; }
+        .status { color: #666; font-weight: bold; margin-bottom: 10px; height: 25px; font-size: 1.1rem; text-align: center; }
         
-        /* Grid and Cells */
+        /* Board visibility */
+        #gameArea { display: none; flex-direction: column; align-items: center; }
+        
         .grid { display: grid; grid-template-columns: repeat(5, 70px); gap: 10px; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); position: relative; }
         .cell { width: 70px; height: 70px; border: 2px solid #eee; display: flex; align-items: center; justify-content: center; 
                 cursor: pointer; font-size: 1.2rem; font-weight: bold; border-radius: 8px; background: #fff; position: relative; overflow: hidden; }
         .marked { background-color: #f8f9fa; border-color: #ffc107; color: #ff9800; }
         
-        /* Winning Effect */
         .winning-cell { background-color: #28a745 !important; border-color: #1e7e34 !important; color: white !important; z-index: 1; }
-        
-        /* The Strike Line Effect */
-        .winning-cell::after {
-            content: '';
-            position: absolute;
-            background-color: rgba(255, 255, 255, 0.7);
-            z-index: 2;
-        }
-        /* Horizontal line */
+        .winning-cell::after { content: ''; position: absolute; background-color: rgba(255, 255, 255, 0.7); z-index: 2; }
         .line-h::after { width: 100%; height: 4px; top: 50%; left: 0; transform: translateY(-50%); }
-        /* Vertical line */
         .line-v::after { width: 4px; height: 100%; top: 0; left: 50%; transform: translateX(-50%); }
-        /* Diagonal 1 (\) */
         .line-d1::after { width: 140%; height: 4px; top: 50%; left: -20%; transform: rotate(45deg); }
-        /* Diagonal 2 (/) */
         .line-d2::after { width: 140%; height: 4px; top: 50%; left: -20%; transform: rotate(-45deg); }
 
         #winMsg { color: #28a745; font-size: 2.5rem; display: none; font-weight: 900; animation: bounce 0.5s infinite alternate; }
@@ -46,19 +36,21 @@
 
     <div class="controls">
         <input type="text" id="roomId" placeholder="Room Name">
-        <button class="btn-join" onclick="joinRoom()">Join Room</button>
+        <button class="btn-join" id="joinBtn" onclick="joinRoom()">Join Room</button>
     </div>
 
-    <div id="winMsg">★ BINGO! YOU WIN ★</div>
-    <div id="loseMsg">GAME OVER - YOU LOSE</div>
-    <div id="status" class="status">Waiting...</div>
+    <div id="status" class="status">Please enter a room name to start</div>
     
-    <div id="bingoBoard" class="grid"></div>
-    <button id="newGameBtn" class="btn-newgame" onclick="newGame()">Start New Match</button>
+    <div id="gameArea">
+        <div id="winMsg">★ BINGO! YOU WIN ★</div>
+        <div id="loseMsg">GAME OVER - YOU LOSE</div>
+        <div id="bingoBoard" class="grid"></div>
+        <button id="newGameBtn" class="btn-newgame" onclick="newGame()">Start New Match</button>
+    </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getDatabase, ref, set, onValue, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        import { getDatabase, ref, set, onValue, update, onDisconnect, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDfpiAPFdf-TGrzZksRDXecy7szOoU_5ts",
@@ -84,7 +76,6 @@
             board.innerHTML = '';
             const numbers = Array.from({length: 25}, (_, i) => i + 1);
             const shuffled = shuffle(numbers);
-
             shuffled.forEach((num, index) => {
                 let div = document.createElement('div');
                 div.className = 'cell';
@@ -94,10 +85,6 @@
                 div.onclick = () => markNumber(num);
                 board.appendChild(div);
             });
-            
-            document.getElementById('winMsg').style.display = 'none';
-            document.getElementById('loseMsg').style.display = 'none';
-            document.getElementById('newGameBtn').style.display = 'none';
             isGameOver = false;
         }
 
@@ -105,9 +92,31 @@
             const id = document.getElementById('roomId').value;
             if (!id) return alert("Enter a Room Name");
             currentRoom = id;
-            document.getElementById('status').innerText = "In Room: " + id;
-            createBoard();
+            
+            // Register player in the room
+            const playerRef = ref(db, `rooms/${currentRoom}/players/${myId}`);
+            set(playerRef, true);
+            onDisconnect(playerRef).remove(); // Auto-remove when tab closes
 
+            document.getElementById('joinBtn').disabled = true;
+            document.getElementById('status').innerText = "Waiting for an opponent...";
+
+            // 1. Listen for player count
+            onValue(ref(db, `rooms/${currentRoom}/players`), (snapshot) => {
+                const players = snapshot.val() || {};
+                const playerCount = Object.keys(players).length;
+                if (playerCount >= 2) {
+                    document.getElementById('gameArea').style.display = 'flex';
+                    if (!document.getElementById('bingoBoard').innerHTML) {
+                        createBoard();
+                    }
+                } else {
+                    document.getElementById('gameArea').style.display = 'none';
+                    document.getElementById('status').innerText = "Opponent left. Waiting for a new player...";
+                }
+            });
+
+            // 2. Listen for marked numbers
             onValue(ref(db, `rooms/${currentRoom}/marked`), (snapshot) => {
                 const markedNumbers = snapshot.val() || {};
                 document.querySelectorAll('.cell').forEach(el => {
@@ -116,8 +125,13 @@
                     else el.classList.remove('marked');
                 });
                 checkBingo();
+                // If marks are cleared, reset UI
+                if (Object.keys(markedNumbers).length === 0) {
+                    resetUI();
+                }
             });
 
+            // 3. Listen for winner
             onValue(ref(db, `rooms/${currentRoom}/winner`), (snapshot) => {
                 const winnerId = snapshot.val();
                 if (winnerId) {
@@ -125,9 +139,18 @@
                     document.getElementById('newGameBtn').style.display = 'block';
                     if (winnerId === myId) document.getElementById('winMsg').style.display = 'block';
                     else document.getElementById('loseMsg').style.display = 'block';
+                } else {
+                    resetUI();
                 }
             });
         };
+
+        function resetUI() {
+            document.getElementById('winMsg').style.display = 'none';
+            document.getElementById('loseMsg').style.display = 'none';
+            document.getElementById('newGameBtn').style.display = 'none';
+            isGameOver = false;
+        }
 
         window.markNumber = function(num) {
             if (!currentRoom || isGameOver) return;
@@ -152,21 +175,25 @@
             winningLines.forEach(line => {
                 if (line.indices.every(idx => cells[idx].classList.contains('marked'))) {
                     lines++;
-                    line.indices.forEach(idx => {
-                        cells[idx].classList.add('winning-cell', line.type);
-                    });
+                    line.indices.forEach(idx => cells[idx].classList.add('winning-cell', line.type));
                 }
             });
 
             if (lines >= 5 && !isGameOver) {
                 set(ref(db, `rooms/${currentRoom}/winner`), myId);
-            } else {
-                document.getElementById('status').innerText = "Lines: " + lines + " / 5";
+            } else if (currentRoom) {
+                document.getElementById('status').innerText = "In Match | Lines: " + lines + " / 5";
             }
         }
 
         window.newGame = function() {
-            set(ref(db, `rooms/${currentRoom}`), null);
+            // Only clear gameplay data, keep player list
+            const roomRef = ref(db, `rooms/${currentRoom}`);
+            update(roomRef, {
+                marked: {},
+                winner: null
+            });
+            createBoard();
         };
     </script>
 </body>
