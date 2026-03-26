@@ -39,8 +39,8 @@
     <div id="status" class="status">Enter room name to start</div>
     
     <div id="gameArea">
-        <div id="winMsg">★ BINGO! YOU WIN ★</div>
-        <div id="loseMsg">GAME OVER - YOU LOSE</div>
+        <div id="winMsg">★ BINGO! ★</div>
+        <div id="loseMsg">GAME OVER</div>
         <button id="shuffleBtn" class="btn-shuffle" onclick="createBoard()">Shuffle Board</button>
         <div id="bingoBoard" class="grid"></div>
         <div id="afterGameActions" class="action-buttons">
@@ -167,10 +167,10 @@
                     updateShuffleVisibility();
                     if (winnerId === myId) {
                         document.getElementById('winMsg').style.display = 'block';
-                        document.getElementById('status').innerText = "★ BINGO! YOU WIN ★";
+                        document.getElementById('status').innerText = "WINNER";
                     } else {
                         document.getElementById('loseMsg').style.display = 'block';
-                        document.getElementById('status').innerText = "GAME OVER - YOU LOSE";
+                        document.getElementById('status').innerText = "LOSER";
                     }
                 } else {
                     resetUI();
