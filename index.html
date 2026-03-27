@@ -286,19 +286,46 @@
                 playerNames = roomData.playerNames || {};
                 roomSize = settings.size || 5;
                 currentMarkedCount = Object.keys(markedNumbers).length;
+                const pCount = Object.keys(players).length;
+
+                // --- AUTO REVERT TO WAITING IF ALONE ---
+                if (settings.status === 'playing' && pCount < 2) {
+                    if (isSpectator) {
+                        alert("Players left the room. Returning to lobby.");
+                        location.reload();
+                        return;
+                    } else if (players[myId]) {
+                        alert("The other players have left. Returning to the waiting room.");
+                        const updates = {
+                            'settings/status': 'waiting',
+                            marked: null,
+                            winners: null,
+                            boards: null,
+                            proposal: null,
+                            currentTurn: null,
+                            lastMarked: null
+                        };
+                        update(ref(db, `rooms/${currentRoom}`), updates);
+                        return; // Halt to wait for UI update in next snapshot
+                    }
+                }
 
                 // --- WAITING MODE ---
                 if (settings.status === 'waiting') {
                     isGameActive = false;
                     isGameOver = false;
+                    myCurrentBoardData = null; // reset local board state
+                    specBoardDataStr = ""; // reset spectator state
+                    
                     document.getElementById('roomControls').style.display = 'none';
                     document.getElementById('gameArea').style.display = 'none';
                     document.getElementById('waitingArea').style.display = 'flex';
+                    document.getElementById('bingoBoard').innerHTML = '';
+                    document.getElementById('spectatorArea').innerHTML = '';
                     
                     if (isSpectator) document.getElementById('playerNameInput').style.display = 'none';
                     
                     document.getElementById('waitingTitle').innerText = `Room: ${currentRoom}`;
-                    const pCount = Object.keys(players).length;
                     document.getElementById('waitingStatus').innerText = `Waiting for players... (${pCount}/${settings.maxPlayers})`;
                     
                     if (!isSpectator && pCount >= 2) {
