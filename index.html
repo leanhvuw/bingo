@@ -18,6 +18,8 @@
         .btn-newgame { background-color: #28a745; color: white; }
         .btn-leave { background-color: #6c757d; color: white; }
         .btn-start { background-color: #ff8c00; color: white; font-size: 1.2rem; padding: 15px 30px; margin-top: 20px; display: none; }
+        .btn-shuffle { background-color: #ff8c00; color: white; margin-bottom: 10px; }
+        .btn-propose { background-color: #17a2b8; color: white; margin-bottom: 10px; }
         
         /* Status & Typography */
         .status { color: #666; font-weight: bold; margin-bottom: 5px; height: 25px; font-size: 1.1rem; text-align: center; }
@@ -27,6 +29,7 @@
         #waitingArea { display: none; flex-direction: column; align-items: center; background: white; padding: 40px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 300px; text-align: center; }
         .name-input { margin-bottom: 15px; text-align: center; width: 80%; }
         #gameArea { display: none; flex-direction: column; align-items: center; width: 100%; }
+        #firstMoveControls { display: none; gap: 10px; margin-bottom: 15px; }
         .action-buttons { display: none; gap: 10px; margin-top: 20px; }
         
         /* Grid System */
@@ -64,6 +67,11 @@
         #loseMsg { color: #dc3545; font-size: 2.5rem; display: none; font-weight: 900; }
         #drawMsg { color: #ff9800; font-size: 2.5rem; display: none; font-weight: 900; animation: bounce 0.5s infinite alternate; }
         @keyframes bounce { from { transform: translateY(0); } to { transform: translateY(-10px); } }
+
+        /* Proposal modal */
+        #proposalModal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 100; }
+        .modal-content { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+        .modal-content button { margin: 10px 5px; }
     </style>
 </head>
 <body>
@@ -96,6 +104,12 @@
         <div id="loseMsg">GAME OVER</div>
         <div id="drawMsg">DRAW!</div>
         
+        <div id="firstMoveControls">
+            <button id="shuffleBtn" class="btn-shuffle" onclick="shuffleMyBoard()">Shuffle Board</button>
+            <button id="proposeMeBtn" class="btn-propose" onclick="proposeFirst('me')">I go first</button>
+            <button id="proposeOppBtn" class="btn-propose" onclick="proposeFirst('opp')">You go first</button>
+        </div>
+
         <div id="bingoBoard" class="grid"></div>
 
         <div id="spectatorArea"></div>
@@ -103,6 +117,14 @@
         <div id="afterGameActions" class="action-buttons">
             <button class="btn-newgame" id="newGameBtn" onclick="newGame()">Start New Match</button>
             <button class="btn-leave" onclick="leaveRoom()">Leave Room</button>
+        </div>
+    </div>
+
+    <div id="proposalModal">
+        <div class="modal-content">
+            <h3 id="proposalMsg"></h3>
+            <button class="btn-newgame" onclick="respondProposal(true)">Accept</button>
+            <button class="btn-leave" onclick="respondProposal(false)">Decline</button>
         </div>
     </div>
 
@@ -129,11 +151,14 @@
         let isGameActive = false;
         let isSpectator = false;
         
-        // Dynamic Game Variables
         let roomSize = 5;
         let playerOrder = [];
         let currentTurn = null;
         let playerNames = {};
+        let currentMarkedCount = 0;
+        let pendingProposal = null;
+        let myCurrentBoardData = null;
+        let specBoardDataStr = "";
 
         function shuffle(array) { return array.sort(() => Math.random() - 0.5); }
 
@@ -260,6 +285,7 @@
                 currentTurn = roomData.currentTurn || null;
                 playerNames = roomData.playerNames || {};
                 roomSize = settings.size || 5;
+                currentMarkedCount = Object.keys(markedNumbers).length;
 
                 // --- WAITING MODE ---
                 if (settings.status === 'waiting') {
@@ -300,11 +326,15 @@
                             generateAndUploadBoard(roomSize);
                             return;
                         }
-                        renderPlayerBoard(boards[myId]);
+                        // Re-render only if board data changed (e.g., shuffled)
+                        if (JSON.stringify(myCurrentBoardData) !== JSON.stringify(boards[myId])) {
+                            myCurrentBoardData = boards[myId];
+                            renderPlayerBoard(boards[myId]);
+                        }
                     }
 
                     // 2. Apply Marks & Colors
-                    if (Object.keys(markedNumbers).length === 0) isGameOver = false;
+                    if (currentMarkedCount === 0) isGameOver = false;
                     
                     document.querySelectorAll('.cell').forEach(el => {
                         const num = el.getAttribute('data-num');
@@ -322,9 +352,23 @@
                         }
                     });
 
-                    // 3. Logic & UI
+                    // 3. Logic & UI Updates
                     checkAndProcessBingo(markedNumbers, roomData.winners);
-                    updateTurnUI();
+                    updateControlsUI();
+                }
+            });
+
+            // Listen to proposals
+            onValue(ref(db, `rooms/${currentRoom}/proposal`), (snapshot) => {
+                if (isSpectator) return;
+                pendingProposal = snapshot.val();
+                const modal = document.getElementById('proposalModal');
+                
+                if (pendingProposal && pendingProposal.from !== myId) {
+                    document.getElementById('proposalMsg').innerText = "Opponent wants to go first. Do you agree?";
+                    modal.style.display = 'flex';
+                } else {
+                    modal.style.display = 'none';
                 }
             });
         }
@@ -340,9 +384,20 @@
             updates['settings/status'] = 'playing';
             updates['settings/size'] = size;
             updates['playerOrder'] = pIds;
-            updates['currentTurn'] = pIds[0]; 
+            
+            // 2 players: manual negotiation. 3+ players: random start.
+            if (pIds.length === 2) {
+                updates['currentTurn'] = null;
+            } else {
+                updates['currentTurn'] = pIds[Math.floor(Math.random() * pIds.length)]; 
+            }
             
             await update(ref(db, `rooms/${currentRoom}`), updates);
+        };
+
+        window.shuffleMyBoard = function() {
+            if (currentMarkedCount > 0) return;
+            generateAndUploadBoard(roomSize);
         };
 
         function generateAndUploadBoard(size) {
@@ -353,8 +408,6 @@
 
         function renderPlayerBoard(numbers) {
             const board = document.getElementById('bingoBoard');
-            if (board.children.length > 0) return; 
-            
             board.style.gridTemplateColumns = `repeat(${roomSize}, 60px)`;
             board.innerHTML = '';
             
@@ -369,10 +422,13 @@
         }
 
         function renderSpectatorBoards(boards) {
-            const specArea = document.getElementById('spectatorArea');
-            if (specArea.children.length === playerOrder.length) return; 
+            const currentStr = JSON.stringify(boards);
+            if (specBoardDataStr === currentStr) return; 
+            specBoardDataStr = currentStr;
 
+            const specArea = document.getElementById('spectatorArea');
             specArea.innerHTML = '';
+            
             playerOrder.forEach((pId, index) => {
                 if (!boards[pId]) return;
                 
@@ -408,8 +464,26 @@
             return colors[index % colors.length];
         }
 
+        window.proposeFirst = function(type) {
+            if (isSpectator) return;
+            if (type === 'me') {
+                set(ref(db, `rooms/${currentRoom}/proposal`), { from: myId });
+            } else if (type === 'opp') {
+                const oppId = playerOrder.find(id => id !== myId);
+                set(ref(db, `rooms/${currentRoom}/currentTurn`), oppId);
+            }
+        };
+
+        window.respondProposal = function(agree) {
+            if (agree && pendingProposal) {
+                set(ref(db, `rooms/${currentRoom}/currentTurn`), pendingProposal.from);
+            }
+            remove(ref(db, `rooms/${currentRoom}/proposal`));
+        };
+
         window.markNumber = function(num) {
             if (isSpectator || !currentRoom || isGameOver || !isGameActive) return;
+            if (!currentTurn) return alert("Please agree on who goes first!");
             if (currentTurn !== myId) return alert("Not your turn!");
 
             const currentIndex = playerOrder.indexOf(myId);
@@ -422,6 +496,54 @@
             updates[`lastMarked`] = num;
             update(ref(db, `rooms/${currentRoom}`), updates);
         };
+
+        function updateControlsUI() {
+            const firstMoveControls = document.getElementById('firstMoveControls');
+            const shuffleBtn = document.getElementById('shuffleBtn');
+            const proposeMeBtn = document.getElementById('proposeMeBtn');
+            const proposeOppBtn = document.getElementById('proposeOppBtn');
+            const turnDiv = document.getElementById('turnIndicator');
+
+            if (isSpectator || isGameOver) {
+                firstMoveControls.style.display = 'none';
+                if(isSpectator && !isGameOver) turnDiv.style.display = 'none';
+                return;
+            }
+
+            firstMoveControls.style.display = 'flex';
+            
+            // Show Shuffle if no marks yet
+            shuffleBtn.style.display = (currentMarkedCount === 0) ? 'inline-block' : 'none';
+
+            // Show Proposals only if 2 players and turn is undecided
+            if (playerOrder.length === 2 && !currentTurn) {
+                proposeMeBtn.style.display = 'inline-block';
+                proposeOppBtn.style.display = 'inline-block';
+                turnDiv.style.display = 'none';
+                document.getElementById('status').innerText = "Choose who goes first!";
+            } else {
+                proposeMeBtn.style.display = 'none';
+                proposeOppBtn.style.display = 'none';
+                turnDiv.style.display = 'block';
+                
+                if (currentTurn === myId) {
+                    turnDiv.innerText = "Your turn!";
+                    turnDiv.style.color = "#28a745";
+                } else {
+                    turnDiv.innerText = `${getPlayerName(currentTurn)}'s turn...`;
+                    turnDiv.style.color = "#dc3545";
+                }
+
+                if (playerOrder.length > 2 && currentMarkedCount === 0) {
+                    document.getElementById('status').innerText = "Game started! You can shuffle before the first move.";
+                }
+            }
+
+            // Hide container if all buttons are hidden
+            if (shuffleBtn.style.display === 'none' && proposeMeBtn.style.display === 'none') {
+                firstMoveControls.style.display = 'none';
+            }
+        }
 
         function checkAndProcessBingo(markedNumbers, existingWinners) {
             const winningLinesData = generateWinningLines(roomSize);
@@ -453,7 +575,10 @@
                         }
                     });
 
-                    if (!isGameOver) document.getElementById('status').innerText = `In Match | Lines: ${linesCompleted} / ${linesToWin}`;
+                    // Update Status safely
+                    if (!isGameOver && currentTurn) {
+                        document.getElementById('status').innerText = `In Match | Lines: ${linesCompleted} / ${linesToWin}`;
+                    }
 
                     if (linesCompleted >= linesToWin && !existingWinners?.[myId]) {
                         update(ref(db, `rooms/${currentRoom}/winners`), { [myId]: true });
@@ -472,6 +597,7 @@
                     
                     document.getElementById('afterGameActions').style.display = 'flex';
                     document.getElementById('turnIndicator').style.display = 'none';
+                    document.getElementById('firstMoveControls').style.display = 'none';
                     
                     document.getElementById('winMsg').style.display = 'none';
                     document.getElementById('loseMsg').style.display = 'none';
@@ -500,24 +626,6 @@
             }
         }
 
-        function updateTurnUI() {
-            if (isGameOver || isSpectator) {
-                if(isSpectator && !isGameOver) document.getElementById('turnIndicator').style.display = 'none';
-                return;
-            }
-            
-            const turnDiv = document.getElementById('turnIndicator');
-            turnDiv.style.display = 'block';
-            
-            if (currentTurn === myId) {
-                turnDiv.innerText = "Your turn!";
-                turnDiv.style.color = "#28a745";
-            } else {
-                turnDiv.innerText = `${getPlayerName(currentTurn)}'s turn...`;
-                turnDiv.style.color = "#dc3545";
-            }
-        }
-
         window.newGame = function() {
             if (isSpectator) return;
             const updates = { 
@@ -525,9 +633,17 @@
                 winners: null, 
                 lastMarked: null, 
                 boards: null,
-                currentTurn: playerOrder[0] 
+                proposal: null
             };
             
+            if (playerOrder.length === 2) {
+                updates.currentTurn = null;
+            } else {
+                updates.currentTurn = playerOrder[Math.floor(Math.random() * playerOrder.length)];
+            }
+
+            myCurrentBoardData = null;
+            specBoardDataStr = "";
             document.getElementById('bingoBoard').innerHTML = '';
             document.getElementById('spectatorArea').innerHTML = '';
             
