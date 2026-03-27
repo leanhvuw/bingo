@@ -2,41 +2,53 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Bingo Multiplayer</title>
+    <title>Bingo Multiplayer Dynamic</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; background-color: #f4f7f6; padding-top: 20px; }
-        #roomControls { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; display: flex; gap: 10px; }
-        input { padding: 10px; border: 1px solid #ddd; border-radius: 5px; width: 150px; }
-        button { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        
+        /* Room Controls & Inputs */
+        #roomControls { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; display: flex; gap: 10px; align-items: center; }
+        input, select { padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 1rem; }
+        input { width: 150px; }
+        button { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.2s; font-size: 1rem; }
+        
+        /* Button Colors */
         .btn-join { background-color: #007bff; color: white; }
         .btn-newgame { background-color: #28a745; color: white; }
         .btn-leave { background-color: #6c757d; color: white; }
-        .btn-shuffle { background-color: #ff8c00; color: white; margin-bottom: 10px; }
-        .btn-propose { background-color: #17a2b8; color: white; margin-bottom: 10px; }
+        .btn-start { background-color: #ff8c00; color: white; font-size: 1.2rem; padding: 15px 30px; margin-top: 20px; display: none; }
         
+        /* Status & Typography */
         .status { color: #666; font-weight: bold; margin-bottom: 5px; height: 25px; font-size: 1.1rem; text-align: center; }
         .turn-indicator { font-size: 1.5rem; font-weight: bold; margin-bottom: 15px; display: none; }
         
+        /* Layout Areas */
+        #waitingArea { display: none; flex-direction: column; align-items: center; background: white; padding: 40px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 300px; text-align: center; }
         #gameArea { display: none; flex-direction: column; align-items: center; width: 100%; }
-        #firstMoveControls { display: none; gap: 10px; margin-bottom: 15px; }
         .action-buttons { display: none; gap: 10px; margin-top: 20px; }
         
-        .grid { display: grid; grid-template-columns: repeat(5, 70px); gap: 10px; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); position: relative; }
-        .cell { width: 70px; height: 70px; border: 2px solid #eee; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1.2rem; font-weight: bold; border-radius: 8px; background: #fff; position: relative; overflow: hidden; transition: all 0.2s; }
+        /* Grid System */
+        .grid { display: grid; gap: 8px; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); position: relative; }
+        .cell { width: 60px; height: 60px; border: 2px solid #eee; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1.2rem; font-weight: bold; border-radius: 8px; background: #fff; position: relative; overflow: hidden; transition: all 0.2s; }
         
         /* Spectator Layout */
-        #spectatorArea { display: none; flex-wrap: wrap; justify-content: center; gap: 30px; margin-bottom: 20px; }
+        #spectatorArea { display: none; flex-wrap: wrap; justify-content: center; gap: 30px; margin-bottom: 20px; max-width: 90vw; }
         .board-wrapper { display: flex; flex-direction: column; align-items: center; }
         .board-title { font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; color: #333; }
 
-        /* Player Colors (Used for both Play Mode and Spectator perspective) */
-        .marked-me { background-color: #d4edda; border-color: #28a745; color: #155724; }
-        .marked-opp { background-color: #f8d7da; border-color: #dc3545; color: #721c24; }
+        /* Distinct Colors for up to 6 players */
+        .color-0 { background-color: #d4edda !important; border-color: #28a745 !important; color: #155724 !important; } /* Green */
+        .color-1 { background-color: #cce5ff !important; border-color: #007bff !important; color: #004085 !important; } /* Blue */
+        .color-2 { background-color: #f8d7da !important; border-color: #dc3545 !important; color: #721c24 !important; } /* Red */
+        .color-3 { background-color: #fff3cd !important; border-color: #ffc107 !important; color: #856404 !important; } /* Yellow */
+        .color-4 { background-color: #e2e3e5 !important; border-color: #6c757d !important; color: #383d41 !important; } /* Grey */
+        .color-5 { background-color: #d1ecf1 !important; border-color: #17a2b8 !important; color: #0c5460 !important; } /* Cyan */
         
         /* Highlight last marked cell */
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); box-shadow: 0 0 15px #007bff; } 100% { transform: scale(1); } }
-        .last-marked { border-color: #007bff !important; border-width: 3px; animation: pulse 1.5s infinite; z-index: 5; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); box-shadow: 0 0 15px #000; } 100% { transform: scale(1); } }
+        .last-marked { border-width: 3px !important; animation: pulse 1.5s infinite; z-index: 5; }
         
+        /* Winning Line Overlays */
         .winning-cell { background-color: #ffc107 !important; border-color: #e0a800 !important; color: #333 !important; z-index: 1; }
         .winning-cell::after { content: ''; position: absolute; background-color: rgba(255, 255, 255, 0.7); z-index: 2; }
         
@@ -50,59 +62,43 @@
         #loseMsg { color: #dc3545; font-size: 2.5rem; display: none; font-weight: 900; }
         #drawMsg { color: #ff9800; font-size: 2.5rem; display: none; font-weight: 900; animation: bounce 0.5s infinite alternate; }
         @keyframes bounce { from { transform: translateY(0); } to { transform: translateY(-10px); } }
-
-        /* Proposal modal */
-        #proposalModal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 100; }
-        .modal-content { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
-        .modal-content button { margin: 10px 5px; }
     </style>
 </head>
 <body>
 
     <div id="roomControls">
         <input type="text" id="roomId" placeholder="Room Name">
+        <select id="maxPlayers">
+            <option value="2">Max 2 Players</option>
+            <option value="3">Max 3 Players</option>
+            <option value="4">Max 4 Players</option>
+            <option value="5">Max 5 Players</option>
+            <option value="6">Max 6 Players</option>
+        </select>
         <button class="btn-join" id="joinBtn" onclick="joinRoom()">Join Room</button>
     </div>
 
-    <div id="status" class="status">Enter room name to start</div>
+    <div id="waitingArea">
+        <h2 id="waitingTitle">Room: ...</h2>
+        <div id="waitingStatus" class="status">Waiting for players... (1/2)</div>
+        <button id="startBtn" class="btn-start" onclick="startGame()">Start Game</button>
+    </div>
     
     <div id="gameArea">
+        <div id="status" class="status"></div>
         <div id="turnIndicator" class="turn-indicator"></div>
         
         <div id="winMsg">★ BINGO! ★</div>
         <div id="loseMsg">GAME OVER</div>
         <div id="drawMsg">DRAW!</div>
         
-        <div id="firstMoveControls">
-            <button id="shuffleBtn" class="btn-shuffle" onclick="createBoard()">Shuffle Board</button>
-            <button class="btn-propose" onclick="proposeFirst('me')">I go first</button>
-            <button class="btn-propose" onclick="proposeFirst('opp')">You go first</button>
-        </div>
-
         <div id="bingoBoard" class="grid"></div>
 
-        <div id="spectatorArea">
-            <div class="board-wrapper">
-                <div class="board-title">Player 1</div>
-                <div id="board1" class="grid"></div>
-            </div>
-            <div class="board-wrapper">
-                <div class="board-title">Player 2</div>
-                <div id="board2" class="grid"></div>
-            </div>
-        </div>
+        <div id="spectatorArea"></div>
         
         <div id="afterGameActions" class="action-buttons">
             <button class="btn-newgame" id="newGameBtn" onclick="newGame()">Start New Match</button>
             <button class="btn-leave" onclick="leaveRoom()">Leave Room</button>
-        </div>
-    </div>
-
-    <div id="proposalModal">
-        <div class="modal-content">
-            <h3 id="proposalMsg"></h3>
-            <button class="btn-newgame" onclick="respondProposal(true)">Accept</button>
-            <button class="btn-leave" onclick="respondProposal(false)">Decline</button>
         </div>
     </div>
 
@@ -125,373 +121,425 @@
         
         const myId = "player_" + Math.floor(Math.random() * 1000000);
         let currentRoom = "";
-        let opponentId = "";
         let isGameOver = false;
         let isGameActive = false;
         let isSpectator = false;
+        
+        // Dynamic Game Variables
+        let roomSize = 5;
+        let playerOrder = [];
         let currentTurn = null;
-        let pendingProposal = null;
-        let playerKeys = [];
 
         function shuffle(array) { return array.sort(() => Math.random() - 0.5); }
 
-        window.createBoard = function() {
-            if (isSpectator) return;
-            const board = document.getElementById('bingoBoard');
-            board.innerHTML = '';
-            const numbers = Array.from({length: 25}, (_, i) => i + 1);
-            const shuffled = shuffle(numbers);
-            
-            // Save board to Firebase
-            update(ref(db, `rooms/${currentRoom}/boards`), { [myId]: shuffled });
-
-            shuffled.forEach((num, index) => {
-                let div = document.createElement('div');
-                div.className = 'cell';
-                div.innerText = num;
-                div.id = `pos-${index}`;
-                div.setAttribute('data-num', num);
-                div.onclick = () => markNumber(num);
-                board.appendChild(div);
-            });
-            isGameOver = false;
-            updateUI();
-        }
-
-        function updateUI() {
-            const firstMoveDiv = document.getElementById('firstMoveControls');
-            const turnDiv = document.getElementById('turnIndicator');
-            const newGameBtn = document.getElementById('newGameBtn');
-
-            if (isSpectator) {
-                firstMoveDiv.style.display = 'none';
-                newGameBtn.style.display = 'none';
-                document.getElementById('bingoBoard').style.display = 'none';
-                document.getElementById('spectatorArea').style.display = 'flex';
-                
-                if (isGameActive && !isGameOver) {
-                    turnDiv.style.display = 'block';
-                    turnDiv.innerText = "Match in progress...";
-                    turnDiv.style.color = "#6c757d";
-                } else {
-                    turnDiv.style.display = 'none';
-                }
-                return;
+        // Dynamic winning lines generator
+        function generateWinningLines(size) {
+            let lines = [];
+            for(let r=0; r<size; r++) { // Rows
+                let row = [];
+                for(let c=0; c<size; c++) row.push(r*size + c);
+                lines.push({indices: row, type: 'line-h'});
             }
-
-            document.getElementById('bingoBoard').style.display = 'grid';
-            document.getElementById('spectatorArea').style.display = 'none';
-
-            if (isGameActive && !isGameOver) {
-                if (!currentTurn) {
-                    firstMoveDiv.style.display = 'flex';
-                    turnDiv.style.display = 'none';
-                    document.getElementById('status').innerText = "Choose who goes first to start!";
-                } else {
-                    firstMoveDiv.style.display = 'none';
-                    turnDiv.style.display = 'block';
-                    turnDiv.innerText = currentTurn === myId ? "Your turn!" : "Opponent's turn...";
-                    turnDiv.style.color = currentTurn === myId ? "#28a745" : "#dc3545";
-                }
-            } else {
-                firstMoveDiv.style.display = 'none';
-                turnDiv.style.display = 'none';
+            for(let c=0; c<size; c++) { // Cols
+                let col = [];
+                for(let r=0; r<size; r++) col.push(r*size + c);
+                lines.push({indices: col, type: 'line-v'});
             }
+            let d1 = [], d2 = []; // Diagonals
+            for(let i=0; i<size; i++) {
+                d1.push(i*size + i);
+                d2.push(i*size + (size - 1 - i));
+            }
+            lines.push({indices: d1, type: 'line-d1'});
+            lines.push({indices: d2, type: 'line-d2'});
+            return lines;
         }
 
         window.joinRoom = async function() {
             const id = document.getElementById('roomId').value;
+            const maxPlayersInput = parseInt(document.getElementById('maxPlayers').value) || 2;
             if (!id) return alert("Please enter a room name");
             currentRoom = id;
             
             document.getElementById('joinBtn').disabled = true;
 
-            const roomRef = ref(db, `rooms/${currentRoom}/players`);
+            const roomRef = ref(db, `rooms/${currentRoom}`);
             const snapshot = await get(roomRef);
-            const players = snapshot.val() || {};
+            let roomData = snapshot.val();
             
-            if (Object.keys(players).length >= 2) {
-                if (confirm("Room is full. Do you want to join as a spectator?")) {
-                    isSpectator = true;
-                    setupListeners();
-                } else {
-                    currentRoom = "";
-                    document.getElementById('joinBtn').disabled = false;
-                }
-            } else {
-                isSpectator = false;
-                const playerRef = ref(db, `rooms/${currentRoom}/players/${myId}`);
-                set(playerRef, true);
-                onDisconnect(playerRef).remove();
-                setupListeners();
+            // Clean up empty room logic (Lazy Garbage Collection)
+            if (roomData && (!roomData.players || Object.keys(roomData.players).length === 0)) {
+                await set(roomRef, null);
+                roomData = null;
             }
+
+            if (!roomData) {
+                // Room doesn't exist, create fresh
+                isSpectator = false;
+                await set(roomRef, {
+                    settings: { maxPlayers: maxPlayersInput, status: 'waiting' },
+                    players: { [myId]: true }
+                });
+            } else {
+                const pCount = Object.keys(roomData.players || {}).length;
+                if (roomData.settings.status === 'playing') {
+                    // Game already started
+                    isSpectator = true;
+                } else if (pCount >= roomData.settings.maxPlayers) {
+                    // Room is full
+                    if (confirm("Room is full. Do you want to join as a spectator?")) {
+                        isSpectator = true;
+                    } else {
+                        currentRoom = "";
+                        document.getElementById('joinBtn').disabled = false;
+                        return;
+                    }
+                } else {
+                    // Join waiting room
+                    isSpectator = false;
+                    await update(ref(db, `rooms/${currentRoom}/players`), { [myId]: true });
+                }
+            }
+
+            if (!isSpectator) {
+                const playerRef = ref(db, `rooms/${currentRoom}/players/${myId}`);
+                onDisconnect(playerRef).remove(); // Auto-remove player on disconnect
+            }
+            
+            setupMainListener();
         };
 
-        function setupListeners() {
-            // 1. Monitor players
-            onValue(ref(db, `rooms/${currentRoom}/players`), (snapshot) => {
-                const players = snapshot.val() || {};
-                playerKeys = Object.keys(players);
+        function setupMainListener() {
+            // One powerful monolithic listener to keep state perfectly synced
+            onValue(ref(db, `rooms/${currentRoom}`), (snapshot) => {
+                const roomData = snapshot.val();
                 
-                if (isSpectator && playerKeys.length < 2) {
-                    alert("A player left the room. Returning to Play Mode.");
+                // If room was deleted (everyone left)
+                if (!roomData) {
+                    alert("Room was closed. Returning to lobby.");
                     location.reload();
                     return;
                 }
 
-                if (playerKeys.length >= 2 || isSpectator) {
-                    if (!isSpectator) opponentId = playerKeys.find(id => id !== myId) || "";
-                    isGameActive = true;
-                    document.getElementById('roomControls').style.display = 'none'; 
-                    document.getElementById('gameArea').style.display = 'flex';
-                    
-                    if (!isGameOver && currentTurn) {
-                        document.getElementById('status').innerText = isSpectator ? "Spectating | Lines: 0 / 5" : "In Match | Lines: 0 / 5";
-                    }
+                const settings = roomData.settings || {};
+                const players = roomData.players || {};
+                const markedNumbers = roomData.marked || {};
+                const boards = roomData.boards || {};
+                
+                playerOrder = roomData.playerOrder || [];
+                currentTurn = roomData.currentTurn || null;
+                roomSize = settings.size || 5;
 
-                    if (!isSpectator && !document.getElementById('bingoBoard').innerHTML) {
-                        createBoard();
-                    }
-                    updateUI();
-                } else {
+                // --- WAITING MODE ---
+                if (settings.status === 'waiting') {
                     isGameActive = false;
-                    document.getElementById('gameArea').style.display = 'none';
-                    document.getElementById('roomControls').style.display = 'flex'; 
-                    document.getElementById('status').innerText = "Waiting for an opponent...";
-                }
-            });
-
-            // 2. Monitor spectator boards
-            if (isSpectator) {
-                onValue(ref(db, `rooms/${currentRoom}/boards`), (snapshot) => {
-                    const boards = snapshot.val() || {};
-                    if (playerKeys[0] && boards[playerKeys[0]]) renderSpectatorBoard('board1', boards[playerKeys[0]]);
-                    if (playerKeys[1] && boards[playerKeys[1]]) renderSpectatorBoard('board2', boards[playerKeys[1]]);
-                });
-            }
-
-            // 3. Monitor marked cells
-            onValue(ref(db, `rooms/${currentRoom}/marked`), (snapshot) => {
-                const markedNumbers = snapshot.val() || {};
-                
-                if (Object.keys(markedNumbers).length === 0) {
                     isGameOver = false;
-                    resetEndGameUI();
-                }
-
-                if (isSpectator) {
-                    // Update board 1 (Player 1's perspective)
-                    document.querySelectorAll('#board1 .cell').forEach(el => {
-                        const num = el.getAttribute('data-num');
-                        el.classList.remove('marked-me', 'marked-opp');
-                        if (markedNumbers[num]) {
-                            if (markedNumbers[num] === playerKeys[0]) el.classList.add('marked-me');
-                            else el.classList.add('marked-opp');
-                        }
-                    });
-
-                    // Update board 2 (Player 2's perspective)
-                    document.querySelectorAll('#board2 .cell').forEach(el => {
-                        const num = el.getAttribute('data-num');
-                        el.classList.remove('marked-me', 'marked-opp');
-                        if (markedNumbers[num]) {
-                            if (markedNumbers[num] === playerKeys[1]) el.classList.add('marked-me');
-                            else el.classList.add('marked-opp');
-                        }
-                    });
+                    document.getElementById('roomControls').style.display = 'none';
+                    document.getElementById('gameArea').style.display = 'none';
+                    document.getElementById('waitingArea').style.display = 'flex';
                     
-                    checkBingoVisuals('board1');
-                    checkBingoVisuals('board2');
-                } else {
-                    // Update player board
-                    document.querySelectorAll('#bingoBoard .cell').forEach(el => {
+                    document.getElementById('waitingTitle').innerText = `Room: ${currentRoom}`;
+                    const pCount = Object.keys(players).length;
+                    document.getElementById('waitingStatus').innerText = `Waiting for players... (${pCount}/${settings.maxPlayers})`;
+                    
+                    // Show start button if at least 2 players are present
+                    if (!isSpectator && pCount >= 2) {
+                        document.getElementById('startBtn').style.display = 'block';
+                    } else {
+                        document.getElementById('startBtn').style.display = 'none';
+                    }
+                } 
+                // --- PLAYING MODE ---
+                else if (settings.status === 'playing') {
+                    isGameActive = true;
+                    document.getElementById('roomControls').style.display = 'none';
+                    document.getElementById('waitingArea').style.display = 'none';
+                    document.getElementById('gameArea').style.display = 'flex';
+
+                    // 1. Setup Boards
+                    if (isSpectator) {
+                        document.getElementById('bingoBoard').style.display = 'none';
+                        document.getElementById('spectatorArea').style.display = 'flex';
+                        renderSpectatorBoards(boards);
+                    } else {
+                        document.getElementById('bingoBoard').style.display = 'grid';
+                        document.getElementById('spectatorArea').style.display = 'none';
+                        // Generate my board if it doesn't exist
+                        if (!boards[myId]) {
+                            generateAndUploadBoard(roomSize);
+                            return; // Wait for the next snapshot after upload
+                        }
+                        renderPlayerBoard(boards[myId]);
+                    }
+
+                    // 2. Apply Marks & Colors
+                    if (Object.keys(markedNumbers).length === 0) isGameOver = false;
+                    
+                    document.querySelectorAll('.cell').forEach(el => {
                         const num = el.getAttribute('data-num');
-                        el.classList.remove('marked-me', 'marked-opp');
+                        // Clean previous colors
+                        for(let i=0; i<6; i++) el.classList.remove(`color-${i}`);
+                        el.classList.remove('last-marked');
+
                         if (markedNumbers[num]) {
-                            if (markedNumbers[num] === myId) el.classList.add('marked-me');
-                            else el.classList.add('marked-opp');
+                            const markerId = markedNumbers[num];
+                            const colorIndex = playerOrder.indexOf(markerId);
+                            if (colorIndex !== -1) el.classList.add(`color-${colorIndex}`);
+                        }
+                        
+                        if (roomData.lastMarked == num) {
+                            el.classList.add('last-marked');
                         }
                     });
-                    checkBingoLogic();
-                }
-                updateUI();
-            });
 
-            // 4. Monitor turns
-            onValue(ref(db, `rooms/${currentRoom}/currentTurn`), (snapshot) => {
-                currentTurn = snapshot.val();
-                updateUI();
-            });
+                    // 3. Check Win Conditions visually & logically
+                    checkAndProcessBingo(markedNumbers, roomData.winners);
 
-            // 5. Monitor proposals
-            onValue(ref(db, `rooms/${currentRoom}/proposal`), (snapshot) => {
-                if (isSpectator) return;
-                pendingProposal = snapshot.val();
-                const modal = document.getElementById('proposalModal');
-                
-                if (pendingProposal && pendingProposal.from !== myId) {
-                    const msg = pendingProposal.who === 'me' 
-                        ? "Opponent wants to go first. Do you agree?" 
-                        : "Opponent invites you to go first. Do you agree?";
-                    document.getElementById('proposalMsg').innerText = msg;
-                    modal.style.display = 'flex';
-                } else {
-                    modal.style.display = 'none';
-                }
-            });
-
-            // 6. Monitor winners
-            onValue(ref(db, `rooms/${currentRoom}/winners`), (snapshot) => {
-                const winners = snapshot.val();
-                if (winners) {
-                    isGameOver = true;
-                    
-                    setTimeout(async () => {
-                        const snap = await get(ref(db, `rooms/${currentRoom}/winners`));
-                        const latestWinners = snap.val() || {};
-                        const winIds = Object.keys(latestWinners);
-                        
-                        document.getElementById('afterGameActions').style.display = 'flex';
-                        updateUI();
-                        
-                        document.getElementById('winMsg').style.display = 'none';
-                        document.getElementById('loseMsg').style.display = 'none';
-                        document.getElementById('drawMsg').style.display = 'none';
-                        
-                        if (winIds.length >= 2) {
-                            document.getElementById('drawMsg').style.display = 'block';
-                            if (isSpectator) document.getElementById('status').innerText = "Game Over - It's a Draw!";
-                        } else if (winIds.length === 1) {
-                            if (winIds[0] === myId) {
-                                document.getElementById('winMsg').style.display = 'block';
-                            } else if (!isSpectator) {
-                                document.getElementById('loseMsg').style.display = 'block';
-                            } else {
-                                const winnerIndex = playerKeys.indexOf(winIds[0]) + 1;
-                                document.getElementById('status').innerText = `Player ${winnerIndex} Wins!`;
-                            }
-                        }
-                    }, 500);
-                } else {
-                    resetEndGameUI();
-                }
-            });
-
-            // 7. Monitor last marked number
-            onValue(ref(db, `rooms/${currentRoom}/lastMarked`), (snapshot) => {
-                const lastNum = snapshot.val();
-                document.querySelectorAll('.cell').forEach(c => c.classList.remove('last-marked'));
-                if (lastNum) {
-                    document.querySelectorAll(`.cell[data-num="${lastNum}"]`).forEach(c => c.classList.add('last-marked'));
+                    // 4. Update Turn UI
+                    updateTurnUI();
                 }
             });
         }
 
-        function renderSpectatorBoard(containerId, numbers) {
-            const board = document.getElementById(containerId);
+        window.startGame = async function() {
+            const snap = await get(ref(db, `rooms/${currentRoom}/players`));
+            const pIds = Object.keys(snap.val() || {});
+            if (pIds.length < 2) return alert("Need at least 2 players!");
+            
+            // Dynamic Size Logic: 2 players -> 5x5, 3 -> 6x6, etc.
+            const size = pIds.length + 3; 
+            
+            const updates = {};
+            updates['settings/status'] = 'playing';
+            updates['settings/size'] = size;
+            updates['playerOrder'] = pIds;
+            updates['currentTurn'] = pIds[0]; // Player 1 goes first
+            
+            await update(ref(db, `rooms/${currentRoom}`), updates);
+        };
+
+        function generateAndUploadBoard(size) {
+            const numbers = Array.from({length: size * size}, (_, i) => i + 1);
+            const shuffled = shuffle(numbers);
+            update(ref(db, `rooms/${currentRoom}/boards`), { [myId]: shuffled });
+        }
+
+        function renderPlayerBoard(numbers) {
+            const board = document.getElementById('bingoBoard');
+            if (board.children.length > 0) return; // Already rendered
+            
+            board.style.gridTemplateColumns = `repeat(${roomSize}, 60px)`;
             board.innerHTML = '';
+            
             numbers.forEach((num) => {
                 let div = document.createElement('div');
                 div.className = 'cell';
                 div.innerText = num;
                 div.setAttribute('data-num', num);
+                div.onclick = () => markNumber(num);
                 board.appendChild(div);
             });
         }
 
-        window.proposeFirst = function(who) {
-            if (isSpectator) return;
-            set(ref(db, `rooms/${currentRoom}/proposal`), { from: myId, who: who });
-        };
+        function renderSpectatorBoards(boards) {
+            const specArea = document.getElementById('spectatorArea');
+            if (specArea.children.length === playerOrder.length) return; // Already rendered
 
-        window.respondProposal = function(agree) {
-            if (agree) {
-                const whoGoesFirst = pendingProposal.who === 'me' ? pendingProposal.from : myId;
-                set(ref(db, `rooms/${currentRoom}/currentTurn`), whoGoesFirst);
-            }
-            remove(ref(db, `rooms/${currentRoom}/proposal`));
-        };
+            specArea.innerHTML = '';
+            playerOrder.forEach((pId, index) => {
+                if (!boards[pId]) return;
+                
+                let wrapper = document.createElement('div');
+                wrapper.className = 'board-wrapper';
+                
+                let title = document.createElement('div');
+                title.className = 'board-title';
+                title.innerText = `Player ${index + 1}`;
+                title.style.color = getPlayerColorHex(index);
+                
+                let boardDiv = document.createElement('div');
+                boardDiv.id = `board-${pId}`;
+                boardDiv.className = 'grid';
+                boardDiv.style.gridTemplateColumns = `repeat(${roomSize}, 60px)`;
+                
+                boards[pId].forEach(num => {
+                    let cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.innerText = num;
+                    cell.setAttribute('data-num', num);
+                    boardDiv.appendChild(cell);
+                });
 
-        function resetEndGameUI() {
-            document.getElementById('winMsg').style.display = 'none';
-            document.getElementById('loseMsg').style.display = 'none';
-            document.getElementById('drawMsg').style.display = 'none';
-            document.getElementById('afterGameActions').style.display = 'none';
-            if (isGameActive && !isGameOver && currentTurn) {
-                document.getElementById('status').innerText = isSpectator ? "Spectating | Lines: 0 / 5" : "In Match | Lines: 0 / 5";
-            }
+                wrapper.appendChild(title);
+                wrapper.appendChild(boardDiv);
+                specArea.appendChild(wrapper);
+            });
+        }
+
+        function getPlayerColorHex(index) {
+            const colors = ['#28a745', '#007bff', '#dc3545', '#ffc107', '#6c757d', '#17a2b8'];
+            return colors[index % colors.length];
         }
 
         window.markNumber = function(num) {
             if (isSpectator || !currentRoom || isGameOver || !isGameActive) return;
-            if (!currentTurn) return alert("Please agree on who goes first!");
             if (currentTurn !== myId) return alert("Not your turn!");
+
+            // Calculate next turn (Round Robin)
+            const currentIndex = playerOrder.indexOf(myId);
+            const nextIndex = (currentIndex + 1) % playerOrder.length;
+            const nextTurn = playerOrder[nextIndex];
 
             const updates = {};
             updates[`marked/${num}`] = myId;
-            updates[`currentTurn`] = opponentId;
+            updates[`currentTurn`] = nextTurn;
             updates[`lastMarked`] = num;
             update(ref(db, `rooms/${currentRoom}`), updates);
         };
 
-        const winningLinesData = [
-            {indices: [0,1,2,3,4], type: 'line-h'}, {indices: [5,6,7,8,9], type: 'line-h'}, 
-            {indices: [10,11,12,13,14], type: 'line-h'}, {indices: [15,16,17,18,19], type: 'line-h'}, 
-            {indices: [20,21,22,23,24], type: 'line-h'},
-            {indices: [0,5,10,15,20], type: 'line-v'}, {indices: [1,6,11,16,21], type: 'line-v'}, 
-            {indices: [2,7,12,17,22], type: 'line-v'}, {indices: [3,8,13,18,23], type: 'line-v'}, 
-            {indices: [4,9,14,19,24], type: 'line-v'},
-            {indices: [0,6,12,18,24], type: 'line-d1'}, {indices: [4,8,12,16,20], type: 'line-d2'}
-        ];
-
-        function checkBingoVisuals(containerId) {
-            const cells = document.querySelectorAll(`#${containerId} .cell`);
-            if (cells.length === 0) return;
-            cells.forEach(c => c.classList.remove('winning-cell', 'line-h', 'line-v', 'line-d1', 'line-d2'));
+        function checkAndProcessBingo(markedNumbers, existingWinners) {
+            const winningLinesData = generateWinningLines(roomSize);
+            const linesToWin = roomSize; // e.g. 5 lines for 5x5, 6 lines for 6x6
             
-            winningLinesData.forEach(line => {
-                if (line.indices.every(idx => cells[idx].classList.contains('marked-me') || cells[idx].classList.contains('marked-opp'))) {
-                    line.indices.forEach(idx => cells[idx].classList.add('winning-cell', line.type));
-                }
-            });
-        }
-
-        function checkBingoLogic() {
-            checkBingoVisuals('bingoBoard');
-            const cells = document.querySelectorAll('#bingoBoard .cell');
-            if (cells.length === 0) return;
+            // 1. Process Visuals (Draw lines)
+            const allBoards = isSpectator ? document.querySelectorAll('#spectatorArea .grid') : [document.getElementById('bingoBoard')];
             
-            let lines = 0;
-            winningLinesData.forEach(line => {
-                if (line.indices.every(idx => cells[idx].classList.contains('marked-me') || cells[idx].classList.contains('marked-opp'))) {
-                    lines++;
-                }
+            allBoards.forEach(board => {
+                const cells = board.querySelectorAll('.cell');
+                if (cells.length === 0) return;
+                
+                cells.forEach(c => c.classList.remove('winning-cell', 'line-h', 'line-v', 'line-d1', 'line-d2'));
+                
+                winningLinesData.forEach(line => {
+                    // Check if all cells in this line have been marked by ANY player
+                    let isComplete = line.indices.every(idx => {
+                        const cellNum = cells[idx].getAttribute('data-num');
+                        return !!markedNumbers[cellNum];
+                    });
+                    
+                    if (isComplete) {
+                        line.indices.forEach(idx => cells[idx].classList.add('winning-cell', line.type));
+                    }
+                });
             });
 
-            if (currentRoom && isGameActive && !isGameOver && currentTurn) {
-                document.getElementById('status').innerText = "In Match | Lines: " + lines + " / 5";
+            // 2. Process Logic (Count lines for current player)
+            if (!isSpectator) {
+                const cells = document.querySelectorAll('#bingoBoard .cell');
+                if (cells.length > 0) {
+                    let linesCompleted = 0;
+                    winningLinesData.forEach(line => {
+                        if (line.indices.every(idx => !!markedNumbers[cells[idx].getAttribute('data-num')])) {
+                            linesCompleted++;
+                        }
+                    });
+
+                    // Update Status Text
+                    if (!isGameOver) {
+                        document.getElementById('status').innerText = `In Match | Lines: ${linesCompleted} / ${linesToWin}`;
+                    }
+
+                    // Declare Win
+                    if (linesCompleted >= linesToWin && !existingWinners?.[myId]) {
+                        update(ref(db, `rooms/${currentRoom}/winners`), { [myId]: true });
+                    }
+                }
+            } else if (!isGameOver) {
+                document.getElementById('status').innerText = `Spectating | Match in progress...`;
             }
 
-            if (lines >= 5 && !isSpectator) {
-                update(ref(db, `rooms/${currentRoom}/winners`), { [myId]: true });
+            // 3. Process End Game State
+            if (existingWinners) {
+                isGameOver = true;
+                
+                setTimeout(async () => {
+                    const snap = await get(ref(db, `rooms/${currentRoom}/winners`));
+                    const latestWinners = snap.val() || {};
+                    const winIds = Object.keys(latestWinners);
+                    
+                    document.getElementById('afterGameActions').style.display = 'flex';
+                    document.getElementById('turnIndicator').style.display = 'none';
+                    
+                    document.getElementById('winMsg').style.display = 'none';
+                    document.getElementById('loseMsg').style.display = 'none';
+                    document.getElementById('drawMsg').style.display = 'none';
+                    
+                    if (winIds.length >= 2) {
+                        document.getElementById('drawMsg').style.display = 'block';
+                        document.getElementById('status').innerText = "Game Over - It's a Draw!";
+                    } else if (winIds.length === 1) {
+                        if (winIds[0] === myId) {
+                            document.getElementById('winMsg').style.display = 'block';
+                            document.getElementById('status').innerText = "You Won!";
+                        } else if (!isSpectator) {
+                            document.getElementById('loseMsg').style.display = 'block';
+                            document.getElementById('status').innerText = "You Lost!";
+                        } else {
+                            const winnerIndex = playerOrder.indexOf(winIds[0]) + 1;
+                            document.getElementById('status').innerText = `Player ${winnerIndex} Wins!`;
+                        }
+                    }
+                }, 500);
+            } else {
+                // Reset end UI just in case
+                document.getElementById('winMsg').style.display = 'none';
+                document.getElementById('loseMsg').style.display = 'none';
+                document.getElementById('drawMsg').style.display = 'none';
+                document.getElementById('afterGameActions').style.display = 'none';
+            }
+        }
+
+        function updateTurnUI() {
+            if (isGameOver || isSpectator) {
+                if(isSpectator && !isGameOver) document.getElementById('turnIndicator').style.display = 'none';
+                return;
+            }
+            
+            const turnDiv = document.getElementById('turnIndicator');
+            turnDiv.style.display = 'block';
+            
+            if (currentTurn === myId) {
+                turnDiv.innerText = "Your turn!";
+                turnDiv.style.color = "#28a745";
+            } else {
+                const pIndex = playerOrder.indexOf(currentTurn) + 1;
+                turnDiv.innerText = `Player ${pIndex}'s turn...`;
+                turnDiv.style.color = "#dc3545";
             }
         }
 
         window.newGame = function() {
             if (isSpectator) return;
-            const roomRef = ref(db, `rooms/${currentRoom}`);
-            update(roomRef, { marked: null, winners: null, currentTurn: null, proposal: null, lastMarked: null, boards: null });
-            createBoard();
+            const updates = { 
+                marked: null, 
+                winners: null, 
+                lastMarked: null, 
+                boards: null,
+                currentTurn: playerOrder[0] // Reset turn to P1
+            };
+            
+            // Resetting boards will trigger board generation in the main listener
+            document.getElementById('bingoBoard').innerHTML = '';
+            document.getElementById('spectatorArea').innerHTML = '';
+            
+            update(ref(db, `rooms/${currentRoom}`), updates);
         };
 
-        window.leaveRoom = function() {
+        window.leaveRoom = async function() {
             if (currentRoom) {
                 if (!isSpectator) {
-                    const playerRef = ref(db, `rooms/${currentRoom}/players/${myId}`);
-                    remove(playerRef).then(() => { location.reload(); });
-                } else {
-                    location.reload();
+                    // Cleanup logic: If I am the last player, delete the room
+                    const snap = await get(ref(db, `rooms/${currentRoom}/players`));
+                    const players = snap.val() || {};
+                    const pIds = Object.keys(players);
+                    
+                    if (pIds.length <= 1 && pIds.includes(myId)) {
+                        await remove(ref(db, `rooms/${currentRoom}`)); // Delete whole room
+                    } else {
+                        await remove(ref(db, `rooms/${currentRoom}/players/${myId}`)); // Just delete me
+                    }
                 }
+                location.reload();
             }
         };
     </script>
