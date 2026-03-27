@@ -29,13 +29,9 @@
         .board-wrapper { display: flex; flex-direction: column; align-items: center; }
         .board-title { font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; color: #333; }
 
-        /* Player Colors */
+        /* Player Colors (Used for both Play Mode and Spectator perspective) */
         .marked-me { background-color: #d4edda; border-color: #28a745; color: #155724; }
         .marked-opp { background-color: #f8d7da; border-color: #dc3545; color: #721c24; }
-        
-        /* Spectator Colors (P1: Green, P2: Blue) */
-        .marked-p1 { background-color: #d4edda; border-color: #28a745; color: #155724; }
-        .marked-p2 { background-color: #cce5ff; border-color: #007bff; color: #004085; }
         
         /* Highlight last marked cell */
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); box-shadow: 0 0 15px #007bff; } 100% { transform: scale(1); } }
@@ -284,15 +280,26 @@
                 }
 
                 if (isSpectator) {
-                    // Update spectator boards
-                    document.querySelectorAll('#spectatorArea .cell').forEach(el => {
+                    // Update board 1 (Player 1's perspective)
+                    document.querySelectorAll('#board1 .cell').forEach(el => {
                         const num = el.getAttribute('data-num');
-                        el.classList.remove('marked-p1', 'marked-p2');
+                        el.classList.remove('marked-me', 'marked-opp');
                         if (markedNumbers[num]) {
-                            if (markedNumbers[num] === playerKeys[0]) el.classList.add('marked-p1');
-                            else el.classList.add('marked-p2');
+                            if (markedNumbers[num] === playerKeys[0]) el.classList.add('marked-me');
+                            else el.classList.add('marked-opp');
                         }
                     });
+
+                    // Update board 2 (Player 2's perspective)
+                    document.querySelectorAll('#board2 .cell').forEach(el => {
+                        const num = el.getAttribute('data-num');
+                        el.classList.remove('marked-me', 'marked-opp');
+                        if (markedNumbers[num]) {
+                            if (markedNumbers[num] === playerKeys[1]) el.classList.add('marked-me');
+                            else el.classList.add('marked-opp');
+                        }
+                    });
+                    
                     checkBingoVisuals('board1');
                     checkBingoVisuals('board2');
                 } else {
@@ -443,7 +450,7 @@
             cells.forEach(c => c.classList.remove('winning-cell', 'line-h', 'line-v', 'line-d1', 'line-d2'));
             
             winningLinesData.forEach(line => {
-                if (line.indices.every(idx => cells[idx].classList.contains('marked-p1') || cells[idx].classList.contains('marked-p2') || cells[idx].classList.contains('marked-me') || cells[idx].classList.contains('marked-opp'))) {
+                if (line.indices.every(idx => cells[idx].classList.contains('marked-me') || cells[idx].classList.contains('marked-opp'))) {
                     line.indices.forEach(idx => cells[idx].classList.add('winning-cell', line.type));
                 }
             });
