@@ -17,16 +17,29 @@
         .status { color: #666; font-weight: bold; margin-bottom: 5px; height: 25px; font-size: 1.1rem; text-align: center; }
         .turn-indicator { font-size: 1.5rem; font-weight: bold; margin-bottom: 15px; display: none; }
         
-        #gameArea { display: none; flex-direction: column; align-items: center; }
+        #gameArea { display: none; flex-direction: column; align-items: center; width: 100%; }
         #firstMoveControls { display: none; gap: 10px; margin-bottom: 15px; }
         .action-buttons { display: none; gap: 10px; margin-top: 20px; }
         
         .grid { display: grid; grid-template-columns: repeat(5, 70px); gap: 10px; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); position: relative; }
-        .cell { width: 70px; height: 70px; border: 2px solid #eee; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1.2rem; font-weight: bold; border-radius: 8px; background: #fff; position: relative; overflow: hidden; }
+        .cell { width: 70px; height: 70px; border: 2px solid #eee; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1.2rem; font-weight: bold; border-radius: 8px; background: #fff; position: relative; overflow: hidden; transition: all 0.2s; }
         
-        /* Colors for 2 players */
+        /* Spectator Layout */
+        #spectatorArea { display: none; flex-wrap: wrap; justify-content: center; gap: 30px; margin-bottom: 20px; }
+        .board-wrapper { display: flex; flex-direction: column; align-items: center; }
+        .board-title { font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; color: #333; }
+
+        /* Player Colors */
         .marked-me { background-color: #d4edda; border-color: #28a745; color: #155724; }
         .marked-opp { background-color: #f8d7da; border-color: #dc3545; color: #721c24; }
+        
+        /* Spectator Colors (P1: Green, P2: Blue) */
+        .marked-p1 { background-color: #d4edda; border-color: #28a745; color: #155724; }
+        .marked-p2 { background-color: #cce5ff; border-color: #007bff; color: #004085; }
+        
+        /* Highlight last marked cell */
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); box-shadow: 0 0 15px #007bff; } 100% { transform: scale(1); } }
+        .last-marked { border-color: #007bff !important; border-width: 3px; animation: pulse 1.5s infinite; z-index: 5; }
         
         .winning-cell { background-color: #ffc107 !important; border-color: #e0a800 !important; color: #333 !important; z-index: 1; }
         .winning-cell::after { content: ''; position: absolute; background-color: rgba(255, 255, 255, 0.7); z-index: 2; }
@@ -71,6 +84,17 @@
         </div>
 
         <div id="bingoBoard" class="grid"></div>
+
+        <div id="spectatorArea">
+            <div class="board-wrapper">
+                <div class="board-title">Player 1</div>
+                <div id="board1" class="grid"></div>
+            </div>
+            <div class="board-wrapper">
+                <div class="board-title">Player 2</div>
+                <div id="board2" class="grid"></div>
+            </div>
+        </div>
         
         <div id="afterGameActions" class="action-buttons">
             <button class="btn-newgame" id="newGameBtn" onclick="newGame()">Start New Match</button>
@@ -109,17 +133,22 @@
         let isGameOver = false;
         let isGameActive = false;
         let isSpectator = false;
-        let currentMarkedCount = 0;
         let currentTurn = null;
         let pendingProposal = null;
+        let playerKeys = [];
 
         function shuffle(array) { return array.sort(() => Math.random() - 0.5); }
 
         window.createBoard = function() {
+            if (isSpectator) return;
             const board = document.getElementById('bingoBoard');
             board.innerHTML = '';
             const numbers = Array.from({length: 25}, (_, i) => i + 1);
             const shuffled = shuffle(numbers);
+            
+            // Save board to Firebase
+            update(ref(db, `rooms/${currentRoom}/boards`), { [myId]: shuffled });
+
             shuffled.forEach((num, index) => {
                 let div = document.createElement('div');
                 div.className = 'cell';
@@ -140,7 +169,10 @@
 
             if (isSpectator) {
                 firstMoveDiv.style.display = 'none';
-                newGameBtn.style.display = 'none'; // Spectators can't restart
+                newGameBtn.style.display = 'none';
+                document.getElementById('bingoBoard').style.display = 'none';
+                document.getElementById('spectatorArea').style.display = 'flex';
+                
                 if (isGameActive && !isGameOver) {
                     turnDiv.style.display = 'block';
                     turnDiv.innerText = "Match in progress...";
@@ -150,6 +182,9 @@
                 }
                 return;
             }
+
+            document.getElementById('bingoBoard').style.display = 'grid';
+            document.getElementById('spectatorArea').style.display = 'none';
 
             if (isGameActive && !isGameOver) {
                 if (!currentTurn) {
@@ -200,17 +235,16 @@
             // 1. Monitor players
             onValue(ref(db, `rooms/${currentRoom}/players`), (snapshot) => {
                 const players = snapshot.val() || {};
-                const pIds = Object.keys(players);
+                playerKeys = Object.keys(players);
                 
-                // Switch back to Play Mode if someone leaves
-                if (isSpectator && pIds.length < 2) {
+                if (isSpectator && playerKeys.length < 2) {
                     alert("A player left the room. Returning to Play Mode.");
                     location.reload();
                     return;
                 }
 
-                if (pIds.length >= 2 || isSpectator) {
-                    if (!isSpectator) opponentId = pIds.find(id => id !== myId) || "";
+                if (playerKeys.length >= 2 || isSpectator) {
+                    if (!isSpectator) opponentId = playerKeys.find(id => id !== myId) || "";
                     isGameActive = true;
                     document.getElementById('roomControls').style.display = 'none'; 
                     document.getElementById('gameArea').style.display = 'flex';
@@ -219,7 +253,7 @@
                         document.getElementById('status').innerText = isSpectator ? "Spectating | Lines: 0 / 5" : "In Match | Lines: 0 / 5";
                     }
 
-                    if (!document.getElementById('bingoBoard').innerHTML) {
+                    if (!isSpectator && !document.getElementById('bingoBoard').innerHTML) {
                         createBoard();
                     }
                     updateUI();
@@ -231,39 +265,58 @@
                 }
             });
 
-            // 2. Monitor marked cells
+            // 2. Monitor spectator boards
+            if (isSpectator) {
+                onValue(ref(db, `rooms/${currentRoom}/boards`), (snapshot) => {
+                    const boards = snapshot.val() || {};
+                    if (playerKeys[0] && boards[playerKeys[0]]) renderSpectatorBoard('board1', boards[playerKeys[0]]);
+                    if (playerKeys[1] && boards[playerKeys[1]]) renderSpectatorBoard('board2', boards[playerKeys[1]]);
+                });
+            }
+
+            // 3. Monitor marked cells
             onValue(ref(db, `rooms/${currentRoom}/marked`), (snapshot) => {
                 const markedNumbers = snapshot.val() || {};
-                currentMarkedCount = Object.keys(markedNumbers).length;
-
-                if (currentMarkedCount === 0) {
+                
+                if (Object.keys(markedNumbers).length === 0) {
                     isGameOver = false;
                     resetEndGameUI();
                 }
 
-                document.querySelectorAll('.cell').forEach(el => {
-                    const num = el.getAttribute('data-num');
-                    el.classList.remove('marked-me', 'marked-opp');
-                    if (markedNumbers[num]) {
-                        if (markedNumbers[num] === myId) {
-                            el.classList.add('marked-me');
-                        } else {
-                            el.classList.add('marked-opp');
+                if (isSpectator) {
+                    // Update spectator boards
+                    document.querySelectorAll('#spectatorArea .cell').forEach(el => {
+                        const num = el.getAttribute('data-num');
+                        el.classList.remove('marked-p1', 'marked-p2');
+                        if (markedNumbers[num]) {
+                            if (markedNumbers[num] === playerKeys[0]) el.classList.add('marked-p1');
+                            else el.classList.add('marked-p2');
                         }
-                    }
-                });
-                
-                checkBingo();
+                    });
+                    checkBingoVisuals('board1');
+                    checkBingoVisuals('board2');
+                } else {
+                    // Update player board
+                    document.querySelectorAll('#bingoBoard .cell').forEach(el => {
+                        const num = el.getAttribute('data-num');
+                        el.classList.remove('marked-me', 'marked-opp');
+                        if (markedNumbers[num]) {
+                            if (markedNumbers[num] === myId) el.classList.add('marked-me');
+                            else el.classList.add('marked-opp');
+                        }
+                    });
+                    checkBingoLogic();
+                }
                 updateUI();
             });
 
-            // 3. Monitor turns
+            // 4. Monitor turns
             onValue(ref(db, `rooms/${currentRoom}/currentTurn`), (snapshot) => {
                 currentTurn = snapshot.val();
                 updateUI();
             });
 
-            // 4. Monitor proposals
+            // 5. Monitor proposals
             onValue(ref(db, `rooms/${currentRoom}/proposal`), (snapshot) => {
                 if (isSpectator) return;
                 pendingProposal = snapshot.val();
@@ -280,13 +333,12 @@
                 }
             });
 
-            // 5. Monitor winners for Win or Draw
+            // 6. Monitor winners
             onValue(ref(db, `rooms/${currentRoom}/winners`), (snapshot) => {
                 const winners = snapshot.val();
                 if (winners) {
-                    isGameOver = true; // Lock board immediately
+                    isGameOver = true;
                     
-                    // Wait 500ms to allow both clients to register a win if it happens on the same turn
                     setTimeout(async () => {
                         const snap = await get(ref(db, `rooms/${currentRoom}/winners`));
                         const latestWinners = snap.val() || {};
@@ -295,29 +347,48 @@
                         document.getElementById('afterGameActions').style.display = 'flex';
                         updateUI();
                         
-                        // Hide all messages first
                         document.getElementById('winMsg').style.display = 'none';
                         document.getElementById('loseMsg').style.display = 'none';
                         document.getElementById('drawMsg').style.display = 'none';
                         
                         if (winIds.length >= 2) {
-                            // Draw condition
                             document.getElementById('drawMsg').style.display = 'block';
                             if (isSpectator) document.getElementById('status').innerText = "Game Over - It's a Draw!";
                         } else if (winIds.length === 1) {
-                            // Single winner condition
                             if (winIds[0] === myId) {
                                 document.getElementById('winMsg').style.display = 'block';
                             } else if (!isSpectator) {
                                 document.getElementById('loseMsg').style.display = 'block';
                             } else {
-                                document.getElementById('status').innerText = "Game Over!";
+                                const winnerIndex = playerKeys.indexOf(winIds[0]) + 1;
+                                document.getElementById('status').innerText = `Player ${winnerIndex} Wins!`;
                             }
                         }
                     }, 500);
                 } else {
                     resetEndGameUI();
                 }
+            });
+
+            // 7. Monitor last marked number
+            onValue(ref(db, `rooms/${currentRoom}/lastMarked`), (snapshot) => {
+                const lastNum = snapshot.val();
+                document.querySelectorAll('.cell').forEach(c => c.classList.remove('last-marked'));
+                if (lastNum) {
+                    document.querySelectorAll(`.cell[data-num="${lastNum}"]`).forEach(c => c.classList.add('last-marked'));
+                }
+            });
+        }
+
+        function renderSpectatorBoard(containerId, numbers) {
+            const board = document.getElementById(containerId);
+            board.innerHTML = '';
+            numbers.forEach((num) => {
+                let div = document.createElement('div');
+                div.className = 'cell';
+                div.innerText = num;
+                div.setAttribute('data-num', num);
+                board.appendChild(div);
             });
         }
 
@@ -349,46 +420,60 @@
             if (!currentTurn) return alert("Please agree on who goes first!");
             if (currentTurn !== myId) return alert("Not your turn!");
 
-            update(ref(db, `rooms/${currentRoom}/marked`), { [num]: myId });
-            set(ref(db, `rooms/${currentRoom}/currentTurn`), opponentId);
+            const updates = {};
+            updates[`marked/${num}`] = myId;
+            updates[`currentTurn`] = opponentId;
+            updates[`lastMarked`] = num;
+            update(ref(db, `rooms/${currentRoom}`), updates);
         };
 
-        function checkBingo() {
-            const cells = document.querySelectorAll('.cell');
+        const winningLinesData = [
+            {indices: [0,1,2,3,4], type: 'line-h'}, {indices: [5,6,7,8,9], type: 'line-h'}, 
+            {indices: [10,11,12,13,14], type: 'line-h'}, {indices: [15,16,17,18,19], type: 'line-h'}, 
+            {indices: [20,21,22,23,24], type: 'line-h'},
+            {indices: [0,5,10,15,20], type: 'line-v'}, {indices: [1,6,11,16,21], type: 'line-v'}, 
+            {indices: [2,7,12,17,22], type: 'line-v'}, {indices: [3,8,13,18,23], type: 'line-v'}, 
+            {indices: [4,9,14,19,24], type: 'line-v'},
+            {indices: [0,6,12,18,24], type: 'line-d1'}, {indices: [4,8,12,16,20], type: 'line-d2'}
+        ];
+
+        function checkBingoVisuals(containerId) {
+            const cells = document.querySelectorAll(`#${containerId} .cell`);
             if (cells.length === 0) return;
             cells.forEach(c => c.classList.remove('winning-cell', 'line-h', 'line-v', 'line-d1', 'line-d2'));
             
-            let lines = 0;
-            const winningLines = [
-                {indices: [0,1,2,3,4], type: 'line-h'}, {indices: [5,6,7,8,9], type: 'line-h'}, 
-                {indices: [10,11,12,13,14], type: 'line-h'}, {indices: [15,16,17,18,19], type: 'line-h'}, 
-                {indices: [20,21,22,23,24], type: 'line-h'},
-                {indices: [0,5,10,15,20], type: 'line-v'}, {indices: [1,6,11,16,21], type: 'line-v'}, 
-                {indices: [2,7,12,17,22], type: 'line-v'}, {indices: [3,8,13,18,23], type: 'line-v'}, 
-                {indices: [4,9,14,19,24], type: 'line-v'},
-                {indices: [0,6,12,18,24], type: 'line-d1'}, {indices: [4,8,12,16,20], type: 'line-d2'}
-            ];
-
-            winningLines.forEach(line => {
-                if (line.indices.every(idx => cells[idx].classList.contains('marked-me') || cells[idx].classList.contains('marked-opp'))) {
-                    lines++;
+            winningLinesData.forEach(line => {
+                if (line.indices.every(idx => cells[idx].classList.contains('marked-p1') || cells[idx].classList.contains('marked-p2') || cells[idx].classList.contains('marked-me') || cells[idx].classList.contains('marked-opp'))) {
                     line.indices.forEach(idx => cells[idx].classList.add('winning-cell', line.type));
                 }
             });
+        }
 
-            if (lines >= 5) {
-                // If a player reaches 5 lines, add them to the winners object
-                if (!isSpectator) update(ref(db, `rooms/${currentRoom}/winners`), { [myId]: true });
-            } else if (currentRoom && isGameActive && !isGameOver && currentTurn) {
-                document.getElementById('status').innerText = (isSpectator ? "Spectating | Lines: " : "In Match | Lines: ") + lines + " / 5";
+        function checkBingoLogic() {
+            checkBingoVisuals('bingoBoard');
+            const cells = document.querySelectorAll('#bingoBoard .cell');
+            if (cells.length === 0) return;
+            
+            let lines = 0;
+            winningLinesData.forEach(line => {
+                if (line.indices.every(idx => cells[idx].classList.contains('marked-me') || cells[idx].classList.contains('marked-opp'))) {
+                    lines++;
+                }
+            });
+
+            if (currentRoom && isGameActive && !isGameOver && currentTurn) {
+                document.getElementById('status').innerText = "In Match | Lines: " + lines + " / 5";
+            }
+
+            if (lines >= 5 && !isSpectator) {
+                update(ref(db, `rooms/${currentRoom}/winners`), { [myId]: true });
             }
         }
 
         window.newGame = function() {
             if (isSpectator) return;
             const roomRef = ref(db, `rooms/${currentRoom}`);
-            // Clean up the 'winners' node for the new game
-            update(roomRef, { marked: null, winners: null, currentTurn: null, proposal: null });
+            update(roomRef, { marked: null, winners: null, currentTurn: null, proposal: null, lastMarked: null, boards: null });
             createBoard();
         };
 
