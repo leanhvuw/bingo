@@ -17,7 +17,7 @@
         .btn-create { background-color: #17a2b8; color: white; }
         .btn-newgame { background-color: #28a745; color: white; }
         .btn-leave { background-color: #6c757d; color: white; }
-        .btn-start { background-color: #ff8c00; color: white; font-size: 1.2rem; padding: 15px 30px; margin-top: 20px; display: none; }
+        .btn-start { background-color: #ff8c00; color: white; font-size: 1.2rem; padding: 15px 30px; margin-top: 10px; margin-bottom: 10px; display: none; }
         .btn-shuffle { background-color: #ff8c00; color: white; margin-bottom: 10px; }
         .btn-propose { background-color: #17a2b8; color: white; margin-bottom: 10px; }
         
@@ -94,6 +94,7 @@
         <input type="text" id="playerNameInput" class="name-input" placeholder="Your Name (Optional)" onchange="savePlayerName()">
         <div id="waitingStatus" class="status">Waiting for players... (1/2)</div>
         <button id="startBtn" class="btn-start" onclick="startGame()">Start Game</button>
+        <button id="leaveWaitingBtn" class="btn-leave" onclick="leaveRoom()" style="margin-top: 10px;">Leave Room</button>
     </div>
     
     <div id="gameArea">
@@ -306,7 +307,7 @@
                             lastMarked: null
                         };
                         update(ref(db, `rooms/${currentRoom}`), updates);
-                        return; // Halt to wait for UI update in next snapshot
+                        return; 
                     }
                 }
 
@@ -314,8 +315,8 @@
                 if (settings.status === 'waiting') {
                     isGameActive = false;
                     isGameOver = false;
-                    myCurrentBoardData = null; // reset local board state
-                    specBoardDataStr = ""; // reset spectator state
+                    myCurrentBoardData = null; 
+                    specBoardDataStr = ""; 
                     
                     document.getElementById('roomControls').style.display = 'none';
                     document.getElementById('gameArea').style.display = 'none';
