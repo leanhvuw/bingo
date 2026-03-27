@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Bingo</title>
+    <title>Bingo Multiplayer</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; background-color: #f4f7f6; padding-top: 20px; }
         #roomControls { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; display: flex; gap: 10px; }
@@ -11,22 +11,41 @@
         .btn-join { background-color: #007bff; color: white; }
         .btn-newgame { background-color: #28a745; color: white; }
         .btn-leave { background-color: #6c757d; color: white; }
-        .btn-shuffle { background-color: #ff8c00; color: white; margin-bottom: 10px; display: none; }
-        .status { color: #666; font-weight: bold; margin-bottom: 10px; height: 25px; font-size: 1.1rem; text-align: center; }
+        .btn-shuffle { background-color: #ff8c00; color: white; margin-bottom: 10px; }
+        .btn-propose { background-color: #17a2b8; color: white; margin-bottom: 10px; }
+        
+        .status { color: #666; font-weight: bold; margin-bottom: 5px; height: 25px; font-size: 1.1rem; text-align: center; }
+        .turn-indicator { font-size: 1.5rem; font-weight: bold; margin-bottom: 15px; display: none; }
+        
         #gameArea { display: none; flex-direction: column; align-items: center; }
+        #firstMoveControls { display: none; gap: 10px; margin-bottom: 15px; }
         .action-buttons { display: none; gap: 10px; margin-top: 20px; }
+        
         .grid { display: grid; grid-template-columns: repeat(5, 70px); gap: 10px; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); position: relative; }
         .cell { width: 70px; height: 70px; border: 2px solid #eee; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1.2rem; font-weight: bold; border-radius: 8px; background: #fff; position: relative; overflow: hidden; }
-        .marked { background-color: #f8f9fa; border-color: #ffc107; color: #ff9800; }
-        .winning-cell { background-color: #28a745 !important; border-color: #1e7e34 !important; color: white !important; z-index: 1; }
+        
+        /* Colors for 2 players */
+        .marked-me { background-color: #d4edda; border-color: #28a745; color: #155724; }
+        .marked-opp { background-color: #f8d7da; border-color: #dc3545; color: #721c24; }
+        
+        .winning-cell { background-color: #ffc107 !important; border-color: #e0a800 !important; color: #333 !important; z-index: 1; }
         .winning-cell::after { content: ''; position: absolute; background-color: rgba(255, 255, 255, 0.7); z-index: 2; }
+        
         .line-h::after { width: 100%; height: 4px; top: 50%; left: 0; transform: translateY(-50%); }
         .line-v::after { width: 4px; height: 100%; top: 0; left: 50%; transform: translateX(-50%); }
         .line-d1::after { width: 140%; height: 4px; top: 50%; left: -20%; transform: rotate(45deg); }
         .line-d2::after { width: 140%; height: 4px; top: 50%; left: -20%; transform: rotate(-45deg); }
+        
+        /* End game messages */
         #winMsg { color: #28a745; font-size: 2.5rem; display: none; font-weight: 900; animation: bounce 0.5s infinite alternate; }
         #loseMsg { color: #dc3545; font-size: 2.5rem; display: none; font-weight: 900; }
+        #drawMsg { color: #ff9800; font-size: 2.5rem; display: none; font-weight: 900; animation: bounce 0.5s infinite alternate; }
         @keyframes bounce { from { transform: translateY(0); } to { transform: translateY(-10px); } }
+
+        /* Proposal modal */
+        #proposalModal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 100; }
+        .modal-content { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+        .modal-content button { margin: 10px 5px; }
     </style>
 </head>
 <body>
@@ -39,19 +58,37 @@
     <div id="status" class="status">Enter room name to start</div>
     
     <div id="gameArea">
+        <div id="turnIndicator" class="turn-indicator"></div>
+        
         <div id="winMsg">★ BINGO! ★</div>
         <div id="loseMsg">GAME OVER</div>
-        <button id="shuffleBtn" class="btn-shuffle" onclick="createBoard()">Shuffle Board</button>
+        <div id="drawMsg">DRAW!</div>
+        
+        <div id="firstMoveControls">
+            <button id="shuffleBtn" class="btn-shuffle" onclick="createBoard()">Shuffle Board</button>
+            <button class="btn-propose" onclick="proposeFirst('me')">I go first</button>
+            <button class="btn-propose" onclick="proposeFirst('opp')">You go first</button>
+        </div>
+
         <div id="bingoBoard" class="grid"></div>
+        
         <div id="afterGameActions" class="action-buttons">
-            <button class="btn-newgame" onclick="newGame()">Start New Match</button>
+            <button class="btn-newgame" id="newGameBtn" onclick="newGame()">Start New Match</button>
             <button class="btn-leave" onclick="leaveRoom()">Leave Room</button>
+        </div>
+    </div>
+
+    <div id="proposalModal">
+        <div class="modal-content">
+            <h3 id="proposalMsg"></h3>
+            <button class="btn-newgame" onclick="respondProposal(true)">Accept</button>
+            <button class="btn-leave" onclick="respondProposal(false)">Decline</button>
         </div>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getDatabase, ref, set, onValue, update, onDisconnect, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        import { getDatabase, ref, set, onValue, update, onDisconnect, remove, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDfpiAPFdf-TGrzZksRDXecy7szOoU_5ts",
@@ -68,9 +105,13 @@
         
         const myId = "player_" + Math.floor(Math.random() * 1000000);
         let currentRoom = "";
+        let opponentId = "";
         let isGameOver = false;
         let isGameActive = false;
+        let isSpectator = false;
         let currentMarkedCount = 0;
+        let currentTurn = null;
+        let pendingProposal = null;
 
         function shuffle(array) { return array.sort(() => Math.random() - 0.5); }
 
@@ -89,47 +130,99 @@
                 board.appendChild(div);
             });
             isGameOver = false;
-            updateShuffleVisibility();
+            updateUI();
         }
 
-        function updateShuffleVisibility() {
-            const shuffleBtn = document.getElementById('shuffleBtn');
-            if (isGameActive && currentMarkedCount === 0 && !isGameOver) {
-                shuffleBtn.style.display = 'block';
+        function updateUI() {
+            const firstMoveDiv = document.getElementById('firstMoveControls');
+            const turnDiv = document.getElementById('turnIndicator');
+            const newGameBtn = document.getElementById('newGameBtn');
+
+            if (isSpectator) {
+                firstMoveDiv.style.display = 'none';
+                newGameBtn.style.display = 'none'; // Spectators can't restart
+                if (isGameActive && !isGameOver) {
+                    turnDiv.style.display = 'block';
+                    turnDiv.innerText = "Match in progress...";
+                    turnDiv.style.color = "#6c757d";
+                } else {
+                    turnDiv.style.display = 'none';
+                }
+                return;
+            }
+
+            if (isGameActive && !isGameOver) {
+                if (!currentTurn) {
+                    firstMoveDiv.style.display = 'flex';
+                    turnDiv.style.display = 'none';
+                    document.getElementById('status').innerText = "Choose who goes first to start!";
+                } else {
+                    firstMoveDiv.style.display = 'none';
+                    turnDiv.style.display = 'block';
+                    turnDiv.innerText = currentTurn === myId ? "Your turn!" : "Opponent's turn...";
+                    turnDiv.style.color = currentTurn === myId ? "#28a745" : "#dc3545";
+                }
             } else {
-                shuffleBtn.style.display = 'none';
+                firstMoveDiv.style.display = 'none';
+                turnDiv.style.display = 'none';
             }
         }
 
-        window.joinRoom = function() {
+        window.joinRoom = async function() {
             const id = document.getElementById('roomId').value;
-            if (!id) return alert("Enter a Room Name");
+            if (!id) return alert("Please enter a room name");
             currentRoom = id;
             
-            const playerRef = ref(db, `rooms/${currentRoom}/players/${myId}`);
-            set(playerRef, true);
-            onDisconnect(playerRef).remove();
-
             document.getElementById('joinBtn').disabled = true;
 
+            const roomRef = ref(db, `rooms/${currentRoom}/players`);
+            const snapshot = await get(roomRef);
+            const players = snapshot.val() || {};
+            
+            if (Object.keys(players).length >= 2) {
+                if (confirm("Room is full. Do you want to join as a spectator?")) {
+                    isSpectator = true;
+                    setupListeners();
+                } else {
+                    currentRoom = "";
+                    document.getElementById('joinBtn').disabled = false;
+                }
+            } else {
+                isSpectator = false;
+                const playerRef = ref(db, `rooms/${currentRoom}/players/${myId}`);
+                set(playerRef, true);
+                onDisconnect(playerRef).remove();
+                setupListeners();
+            }
+        };
+
+        function setupListeners() {
             // 1. Monitor players
             onValue(ref(db, `rooms/${currentRoom}/players`), (snapshot) => {
                 const players = snapshot.val() || {};
-                const playerCount = Object.keys(players).length;
-                if (playerCount >= 2) {
+                const pIds = Object.keys(players);
+                
+                // Switch back to Play Mode if someone leaves
+                if (isSpectator && pIds.length < 2) {
+                    alert("A player left the room. Returning to Play Mode.");
+                    location.reload();
+                    return;
+                }
+
+                if (pIds.length >= 2 || isSpectator) {
+                    if (!isSpectator) opponentId = pIds.find(id => id !== myId) || "";
                     isGameActive = true;
                     document.getElementById('roomControls').style.display = 'none'; 
                     document.getElementById('gameArea').style.display = 'flex';
                     
-                    // FIX: Force status update here
-                    if (!isGameOver) {
-                        document.getElementById('status').innerText = "In Match | Lines: 0 / 5";
+                    if (!isGameOver && currentTurn) {
+                        document.getElementById('status').innerText = isSpectator ? "Spectating | Lines: 0 / 5" : "In Match | Lines: 0 / 5";
                     }
 
                     if (!document.getElementById('bingoBoard').innerHTML) {
                         createBoard();
                     }
-                    updateShuffleVisibility();
+                    updateUI();
                 } else {
                     isGameActive = false;
                     document.getElementById('gameArea').style.display = 'none';
@@ -145,49 +238,119 @@
 
                 if (currentMarkedCount === 0) {
                     isGameOver = false;
-                    resetUI();
+                    resetEndGameUI();
                 }
 
                 document.querySelectorAll('.cell').forEach(el => {
                     const num = el.getAttribute('data-num');
-                    if (markedNumbers[num]) el.classList.add('marked');
-                    else el.classList.remove('marked');
+                    el.classList.remove('marked-me', 'marked-opp');
+                    if (markedNumbers[num]) {
+                        if (markedNumbers[num] === myId) {
+                            el.classList.add('marked-me');
+                        } else {
+                            el.classList.add('marked-opp');
+                        }
+                    }
                 });
                 
                 checkBingo();
-                updateShuffleVisibility();
+                updateUI();
             });
 
-            // 3. Monitor winner
-            onValue(ref(db, `rooms/${currentRoom}/winner`), (snapshot) => {
-                const winnerId = snapshot.val();
-                if (winnerId) {
-                    isGameOver = true;
-                    document.getElementById('afterGameActions').style.display = 'flex';
-                    updateShuffleVisibility();
-                    if (winnerId === myId) {
-                        document.getElementById('winMsg').style.display = 'block';
-                    } else {
-                        document.getElementById('loseMsg').style.display = 'block';
-                    }
+            // 3. Monitor turns
+            onValue(ref(db, `rooms/${currentRoom}/currentTurn`), (snapshot) => {
+                currentTurn = snapshot.val();
+                updateUI();
+            });
+
+            // 4. Monitor proposals
+            onValue(ref(db, `rooms/${currentRoom}/proposal`), (snapshot) => {
+                if (isSpectator) return;
+                pendingProposal = snapshot.val();
+                const modal = document.getElementById('proposalModal');
+                
+                if (pendingProposal && pendingProposal.from !== myId) {
+                    const msg = pendingProposal.who === 'me' 
+                        ? "Opponent wants to go first. Do you agree?" 
+                        : "Opponent invites you to go first. Do you agree?";
+                    document.getElementById('proposalMsg').innerText = msg;
+                    modal.style.display = 'flex';
                 } else {
-                    resetUI();
+                    modal.style.display = 'none';
                 }
             });
+
+            // 5. Monitor winners for Win or Draw
+            onValue(ref(db, `rooms/${currentRoom}/winners`), (snapshot) => {
+                const winners = snapshot.val();
+                if (winners) {
+                    isGameOver = true; // Lock board immediately
+                    
+                    // Wait 500ms to allow both clients to register a win if it happens on the same turn
+                    setTimeout(async () => {
+                        const snap = await get(ref(db, `rooms/${currentRoom}/winners`));
+                        const latestWinners = snap.val() || {};
+                        const winIds = Object.keys(latestWinners);
+                        
+                        document.getElementById('afterGameActions').style.display = 'flex';
+                        updateUI();
+                        
+                        // Hide all messages first
+                        document.getElementById('winMsg').style.display = 'none';
+                        document.getElementById('loseMsg').style.display = 'none';
+                        document.getElementById('drawMsg').style.display = 'none';
+                        
+                        if (winIds.length >= 2) {
+                            // Draw condition
+                            document.getElementById('drawMsg').style.display = 'block';
+                            if (isSpectator) document.getElementById('status').innerText = "Game Over - It's a Draw!";
+                        } else if (winIds.length === 1) {
+                            // Single winner condition
+                            if (winIds[0] === myId) {
+                                document.getElementById('winMsg').style.display = 'block';
+                            } else if (!isSpectator) {
+                                document.getElementById('loseMsg').style.display = 'block';
+                            } else {
+                                document.getElementById('status').innerText = "Game Over!";
+                            }
+                        }
+                    }, 500);
+                } else {
+                    resetEndGameUI();
+                }
+            });
+        }
+
+        window.proposeFirst = function(who) {
+            if (isSpectator) return;
+            set(ref(db, `rooms/${currentRoom}/proposal`), { from: myId, who: who });
         };
 
-        function resetUI() {
+        window.respondProposal = function(agree) {
+            if (agree) {
+                const whoGoesFirst = pendingProposal.who === 'me' ? pendingProposal.from : myId;
+                set(ref(db, `rooms/${currentRoom}/currentTurn`), whoGoesFirst);
+            }
+            remove(ref(db, `rooms/${currentRoom}/proposal`));
+        };
+
+        function resetEndGameUI() {
             document.getElementById('winMsg').style.display = 'none';
             document.getElementById('loseMsg').style.display = 'none';
+            document.getElementById('drawMsg').style.display = 'none';
             document.getElementById('afterGameActions').style.display = 'none';
-            if (isGameActive && !isGameOver) {
-                document.getElementById('status').innerText = "In Match | Lines: 0 / 5";
+            if (isGameActive && !isGameOver && currentTurn) {
+                document.getElementById('status').innerText = isSpectator ? "Spectating | Lines: 0 / 5" : "In Match | Lines: 0 / 5";
             }
         }
 
         window.markNumber = function(num) {
-            if (!currentRoom || isGameOver || !isGameActive) return;
-            update(ref(db, `rooms/${currentRoom}/marked`), { [num]: true });
+            if (isSpectator || !currentRoom || isGameOver || !isGameActive) return;
+            if (!currentTurn) return alert("Please agree on who goes first!");
+            if (currentTurn !== myId) return alert("Not your turn!");
+
+            update(ref(db, `rooms/${currentRoom}/marked`), { [num]: myId });
+            set(ref(db, `rooms/${currentRoom}/currentTurn`), opponentId);
         };
 
         function checkBingo() {
@@ -207,29 +370,36 @@
             ];
 
             winningLines.forEach(line => {
-                if (line.indices.every(idx => cells[idx].classList.contains('marked'))) {
+                if (line.indices.every(idx => cells[idx].classList.contains('marked-me') || cells[idx].classList.contains('marked-opp'))) {
                     lines++;
                     line.indices.forEach(idx => cells[idx].classList.add('winning-cell', line.type));
                 }
             });
 
-            if (lines >= 5 && !isGameOver) {
-                set(ref(db, `rooms/${currentRoom}/winner`), myId);
-            } else if (currentRoom && isGameActive && !isGameOver) {
-                document.getElementById('status').innerText = "In Match | Lines: " + lines + " / 5";
+            if (lines >= 5) {
+                // If a player reaches 5 lines, add them to the winners object
+                if (!isSpectator) update(ref(db, `rooms/${currentRoom}/winners`), { [myId]: true });
+            } else if (currentRoom && isGameActive && !isGameOver && currentTurn) {
+                document.getElementById('status').innerText = (isSpectator ? "Spectating | Lines: " : "In Match | Lines: ") + lines + " / 5";
             }
         }
 
         window.newGame = function() {
+            if (isSpectator) return;
             const roomRef = ref(db, `rooms/${currentRoom}`);
-            update(roomRef, { marked: {}, winner: null });
+            // Clean up the 'winners' node for the new game
+            update(roomRef, { marked: null, winners: null, currentTurn: null, proposal: null });
             createBoard();
         };
 
         window.leaveRoom = function() {
             if (currentRoom) {
-                const playerRef = ref(db, `rooms/${currentRoom}/players/${myId}`);
-                remove(playerRef).then(() => { location.reload(); });
+                if (!isSpectator) {
+                    const playerRef = ref(db, `rooms/${currentRoom}/players/${myId}`);
+                    remove(playerRef).then(() => { location.reload(); });
+                } else {
+                    location.reload();
+                }
             }
         };
     </script>
