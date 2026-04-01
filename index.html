@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Bingo Multiplayer Dynamic</title>
+    <title>Bingooo</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; background-color: #f4f7f6; padding-top: 20px; }
         
@@ -24,6 +24,7 @@
         /* Status & Typography */
         .status { color: #666; font-weight: bold; margin-bottom: 5px; height: 25px; font-size: 1.1rem; text-align: center; }
         .turn-indicator { font-size: 1.5rem; font-weight: bold; margin-bottom: 15px; display: none; }
+        #vicAlScoreBoard { font-size: 1.3rem; font-weight: 900; color: #d63384; margin-bottom: 10px; display: none; background: #fff; padding: 5px 20px; border-radius: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
         
         /* Layout Areas */
         #waitingArea { display: none; flex-direction: column; align-items: center; background: white; padding: 40px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 300px; text-align: center; }
@@ -65,7 +66,6 @@
         /* End game messages */
         #winMsg { color: #28a745; font-size: 2.5rem; display: none; font-weight: 900; animation: bounce 0.5s infinite alternate; }
         #loseMsg { color: #dc3545; font-size: 2.5rem; display: none; font-weight: 900; }
-        #drawMsg { color: #ff9800; font-size: 2.5rem; display: none; font-weight: 900; animation: bounce 0.5s infinite alternate; }
         @keyframes bounce { from { transform: translateY(0); } to { transform: translateY(-10px); } }
 
         /* Proposal modal */
@@ -98,12 +98,13 @@
     </div>
     
     <div id="gameArea">
+        <div id="vicAlScoreBoard"></div>
+
         <div id="status" class="status"></div>
         <div id="turnIndicator" class="turn-indicator"></div>
         
         <div id="winMsg">★ BINGO! ★</div>
         <div id="loseMsg">GAME OVER</div>
-        <div id="drawMsg">DRAW!</div>
         
         <div id="firstMoveControls">
             <button id="shuffleBtn" class="btn-shuffle" onclick="shuffleMyBoard()">Shuffle Board</button>
@@ -156,19 +157,25 @@
         let playerOrder = [];
         let currentTurn = null;
         let playerNames = {};
+        let currentMarkedNumbers = {};
         let currentMarkedCount = 0;
         let pendingProposal = null;
         let myCurrentBoardData = null;
         let specBoardDataStr = "";
 
-        // --- AUTO CLEANUP SYSTEM ON LOAD (Garbage Collection) ---
+        // Global Scores System
+        let vicAlScores = { vic: 0, al: 0 };
+        let isScoreListenerAttached = false;
+        let scoreUpdatedForThisMatch = false;
+
+        // --- AUTO CLEANUP SYSTEM ON LOAD ---
         function cleanupEmptyRooms() {
             get(ref(db, 'rooms')).then((snapshot) => {
                 const rooms = snapshot.val();
                 if (rooms) {
                     for (const rId in rooms) {
                         if (!rooms[rId].players || Object.keys(rooms[rId].players).length === 0) {
-                            remove(ref(db, `rooms/${rId}`)); // Delete empty rooms
+                            remove(ref(db, `rooms/${rId}`)); 
                         }
                     }
                 }
@@ -216,6 +223,48 @@
             let index = playerOrder.indexOf(id);
             if (index === -1) index = Object.keys(playerNames).length;
             return `Player ${index + 1}`;
+        }
+
+        function isVicAlRoom() {
+            if (playerOrder.length !== 2) return false;
+            const name1 = getPlayerName(playerOrder[0]).trim().toLowerCase();
+            const name2 = getPlayerName(playerOrder[1]).trim().toLowerCase();
+            return (name1 === 'vic' && name2 === 'al') || (name1 === 'al' && name2 === 'vic');
+        }
+
+        function attachScoreListener() {
+            if (isScoreListenerAttached) return;
+            isScoreListenerAttached = true;
+            onValue(ref(db, `globalScores/vic_al`), (snapshot) => {
+                vicAlScores = snapshot.val() || { vic: 0, al: 0 };
+                renderVicAlScore();
+            });
+        }
+
+        function renderVicAlScore() {
+            const scoreBoard = document.getElementById('vicAlScoreBoard');
+            if (isVicAlRoom() && isGameActive) {
+                scoreBoard.style.display = 'block';
+                scoreBoard.innerText = `🏆 Vic: ${vicAlScores.vic || 0}   |   Al: ${vicAlScores.al || 0} 🏆`;
+            } else {
+                scoreBoard.style.display = 'none';
+            }
+        }
+
+        function updateVicAlScore(winnerId) {
+            if (!isVicAlRoom() || scoreUpdatedForThisMatch || isSpectator) return;
+            scoreUpdatedForThisMatch = true;
+            
+            if (winnerId === myId) {
+                const myName = getPlayerName(myId).trim().toLowerCase();
+                if (myName === 'vic' || myName === 'al') {
+                    const scoreRef = ref(db, `globalScores/vic_al/${myName}`);
+                    get(scoreRef).then(snap => {
+                        const currentScore = snap.val() || 0;
+                        set(scoreRef, currentScore + 1);
+                    });
+                }
+            }
         }
 
         window.createRoom = async function() {
@@ -312,8 +361,13 @@
                 currentTurn = roomData.currentTurn || null;
                 playerNames = roomData.playerNames || {};
                 roomSize = settings.size || 5;
+                
+                currentMarkedNumbers = markedNumbers; // Lưu lại để dùng ở markNumber()
                 currentMarkedCount = Object.keys(markedNumbers).length;
                 const pCount = Object.keys(players).length;
+
+                attachScoreListener();
+                renderVicAlScore();
 
                 // --- IMMEDIATE DELETE IF EMPTY ---
                 if (pCount === 0) {
@@ -347,6 +401,7 @@
                 if (settings.status === 'waiting') {
                     isGameActive = false;
                     isGameOver = false;
+                    scoreUpdatedForThisMatch = false;
                     myCurrentBoardData = null; 
                     specBoardDataStr = ""; 
                     
@@ -393,7 +448,10 @@
                     }
 
                     // 2. Apply Marks & Colors
-                    if (currentMarkedCount === 0) isGameOver = false;
+                    if (currentMarkedCount === 0) {
+                        isGameOver = false;
+                        scoreUpdatedForThisMatch = false;
+                    }
                     
                     document.querySelectorAll('.cell').forEach(el => {
                         const num = el.getAttribute('data-num');
@@ -412,7 +470,7 @@
                     });
 
                     // 3. Logic & UI Updates
-                    checkAndProcessBingo(markedNumbers, roomData.winners);
+                    checkAndProcessBingo(markedNumbers, roomData.winners, roomData);
                     updateControlsUI();
                 }
             });
@@ -541,6 +599,10 @@
 
         window.markNumber = function(num) {
             if (isSpectator || !currentRoom || isGameOver || !isGameActive) return;
+            
+            // NGĂN CHẶN BẤM VÀO Ô ĐÃ ĐƯỢC CHỌN (Sửa lỗi mất lượt)
+            if (currentMarkedNumbers[num]) return; 
+
             if (!currentTurn) return alert("Please agree on who goes first!");
             if (currentTurn !== myId) return alert("Not your turn!");
 
@@ -600,7 +662,7 @@
             }
         }
 
-        function checkAndProcessBingo(markedNumbers, existingWinners) {
+        function checkAndProcessBingo(markedNumbers, existingWinners, roomData) {
             const winningLinesData = generateWinningLines(roomSize);
             const linesToWin = roomSize; 
             
@@ -655,33 +717,40 @@
                     
                     document.getElementById('winMsg').style.display = 'none';
                     document.getElementById('loseMsg').style.display = 'none';
-                    document.getElementById('drawMsg').style.display = 'none';
                     
+                    // --- LOẠI BỎ DRAW ---
+                    // Phân định thắng thua thực sự bằng cách xem ai là người đánh ô số cuối cùng (tạo ra Bingo)
+                    let actualWinnerId = winIds[0];
                     if (winIds.length >= 2) {
-                        document.getElementById('drawMsg').style.display = 'block';
-                        document.getElementById('status').innerText = "Game Over - It's a Draw!";
-                    } else if (winIds.length === 1) {
-                        if (winIds[0] === myId) {
-                            document.getElementById('winMsg').style.display = 'block';
-                            document.getElementById('status').innerText = "You Won!";
-                        } else if (!isSpectator) {
-                            document.getElementById('loseMsg').style.display = 'block';
-                            document.getElementById('status').innerText = "You Lost!";
-                        } else {
-                            document.getElementById('status').innerText = `${getPlayerName(winIds[0])} Wins!`;
-                        }
+                        const lastMarkedNum = roomData.lastMarked;
+                        actualWinnerId = roomData.marked[lastMarkedNum] || winIds[0];
                     }
+
+                    if (actualWinnerId === myId) {
+                        document.getElementById('winMsg').style.display = 'block';
+                        document.getElementById('status').innerText = "You Won!";
+                    } else if (!isSpectator) {
+                        document.getElementById('loseMsg').style.display = 'block';
+                        document.getElementById('status').innerText = "You Lost!";
+                    } else {
+                        document.getElementById('status').innerText = `${getPlayerName(actualWinnerId)} Wins!`;
+                    }
+
+                    // Cập nhật điểm cho Vic và Al
+                    updateVicAlScore(actualWinnerId);
+
                 }, 500);
             } else {
                 document.getElementById('winMsg').style.display = 'none';
                 document.getElementById('loseMsg').style.display = 'none';
-                document.getElementById('drawMsg').style.display = 'none';
                 document.getElementById('afterGameActions').style.display = 'none';
             }
         }
 
         window.newGame = function() {
             if (isSpectator) return;
+            scoreUpdatedForThisMatch = false;
+            
             const updates = { 
                 marked: null, 
                 winners: null, 
