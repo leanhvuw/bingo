@@ -161,6 +161,32 @@
         let myCurrentBoardData = null;
         let specBoardDataStr = "";
 
+        // --- AUTO CLEANUP SYSTEM ON LOAD (Garbage Collection) ---
+        function cleanupEmptyRooms() {
+            get(ref(db, 'rooms')).then((snapshot) => {
+                const rooms = snapshot.val();
+                if (rooms) {
+                    for (const rId in rooms) {
+                        if (!rooms[rId].players || Object.keys(rooms[rId].players).length === 0) {
+                            remove(ref(db, `rooms/${rId}`)); // Delete empty rooms
+                        }
+                    }
+                }
+            });
+        }
+        cleanupEmptyRooms();
+
+        // --- BROWSER CLOSE CLEANUP ---
+        window.addEventListener("beforeunload", () => {
+            if (currentRoom && !isSpectator) {
+                if (playerOrder.length <= 1) {
+                    remove(ref(db, `rooms/${currentRoom}`));
+                } else {
+                    remove(ref(db, `rooms/${currentRoom}/players/${myId}`));
+                }
+            }
+        });
+
         function shuffle(array) { return array.sort(() => Math.random() - 0.5); }
 
         function generateWinningLines(size) {
@@ -203,7 +229,7 @@
             const roomRef = ref(db, `rooms/${currentRoom}`);
             const snapshot = await get(roomRef);
             
-            if (snapshot.exists()) {
+            if (snapshot.exists() && snapshot.val().players && Object.keys(snapshot.val().players).length > 0) {
                 document.getElementById('roomControls').style.pointerEvents = 'auto';
                 return alert("Room already exists! Please click Join.");
             }
@@ -289,13 +315,19 @@
                 currentMarkedCount = Object.keys(markedNumbers).length;
                 const pCount = Object.keys(players).length;
 
+                // --- IMMEDIATE DELETE IF EMPTY ---
+                if (pCount === 0) {
+                    remove(ref(db, `rooms/${currentRoom}`));
+                    if (isSpectator) {
+                        alert("All players left. Room deleted.");
+                        location.reload();
+                    }
+                    return;
+                }
+
                 // --- AUTO REVERT TO WAITING IF ALONE ---
                 if (settings.status === 'playing' && pCount < 2) {
-                    if (isSpectator) {
-                        alert("Players left the room. Returning to lobby.");
-                        location.reload();
-                        return;
-                    } else if (players[myId]) {
+                    if (players[myId] && !isSpectator) {
                         alert("The other players have left. Returning to the waiting room.");
                         const updates = {
                             'settings/status': 'waiting',
@@ -354,7 +386,6 @@
                             generateAndUploadBoard(roomSize);
                             return;
                         }
-                        // Re-render only if board data changed (e.g., shuffled)
                         if (JSON.stringify(myCurrentBoardData) !== JSON.stringify(boards[myId])) {
                             myCurrentBoardData = boards[myId];
                             renderPlayerBoard(boards[myId]);
@@ -413,7 +444,6 @@
             updates['settings/size'] = size;
             updates['playerOrder'] = pIds;
             
-            // 2 players: manual negotiation. 3+ players: random start.
             if (pIds.length === 2) {
                 updates['currentTurn'] = null;
             } else {
@@ -540,10 +570,8 @@
 
             firstMoveControls.style.display = 'flex';
             
-            // Show Shuffle if no marks yet
             shuffleBtn.style.display = (currentMarkedCount === 0) ? 'inline-block' : 'none';
 
-            // Show Proposals only if 2 players and turn is undecided
             if (playerOrder.length === 2 && !currentTurn) {
                 proposeMeBtn.style.display = 'inline-block';
                 proposeOppBtn.style.display = 'inline-block';
@@ -567,7 +595,6 @@
                 }
             }
 
-            // Hide container if all buttons are hidden
             if (shuffleBtn.style.display === 'none' && proposeMeBtn.style.display === 'none') {
                 firstMoveControls.style.display = 'none';
             }
@@ -603,7 +630,6 @@
                         }
                     });
 
-                    // Update Status safely
                     if (!isGameOver && currentTurn) {
                         document.getElementById('status').innerText = `In Match | Lines: ${linesCompleted} / ${linesToWin}`;
                     }
